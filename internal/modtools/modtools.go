@@ -18,7 +18,7 @@ func KillModTools() {
 	cmd.Run() // Ignore errors - process might not be running
 }
 
-// RunMkOverlay runs mod-tools mkoverlay command as admin
+// RunMkOverlay runs mod-tools mkoverlay command
 func RunMkOverlay(modsDir, overlayDir, gameDir, modName string) (bool, int) {
 	modTools := filepath.Join(TOOLS_DIR, "mod-tools.exe")
 
@@ -31,14 +31,13 @@ func RunMkOverlay(modsDir, overlayDir, gameDir, modName string) (bool, int) {
 
 	fmt.Printf("[ame] Running: %s %s\n", modTools, args)
 
-	// Run directly - we're already admin so child inherits privileges
 	cmd := exec.Command(modTools, "mkoverlay", modsDir, overlayDir,
 		fmt.Sprintf("--game:%s", gameDir),
 		fmt.Sprintf("--mods:%s", modName),
 		"--noTFT", "--ignoreConflict")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Dir = TOOLS_DIR // Set working directory to tools dir
+	cmd.Dir = TOOLS_DIR
 
 	err := cmd.Run()
 	if err != nil {
@@ -52,7 +51,7 @@ func RunMkOverlay(modsDir, overlayDir, gameDir, modName string) (bool, int) {
 	return true, 0
 }
 
-// RunOverlay runs mod-tools runoverlay command (non-blocking, as admin)
+// RunOverlay runs mod-tools runoverlay command (detached, like Bun version)
 func RunOverlay(overlayDir, configPath, gameDir string) error {
 	modTools := filepath.Join(TOOLS_DIR, "mod-tools.exe")
 
@@ -63,16 +62,19 @@ func RunOverlay(overlayDir, configPath, gameDir string) error {
 	fmt.Printf("[ame] Running: %s runoverlay \"%s\" \"%s\" \"--game:%s\" --opts:configless\n",
 		modTools, overlayDir, configPath, gameDir)
 
-	// Run directly with CREATE_NEW_PROCESS_GROUP so it survives parent exit
 	cmd := exec.Command(modTools, "runoverlay",
 		overlayDir, configPath,
 		fmt.Sprintf("--game:%s", gameDir),
 		"--opts:configless")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Dir = TOOLS_DIR // Set working directory to tools dir
+
+	// Match Bun's behavior: detached: true, stdio: "ignore"
+	// This means no stdin/stdout/stderr and CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS
+	cmd.Stdin = nil
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	cmd.Dir = TOOLS_DIR
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP,
+		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | 0x00000008, // DETACHED_PROCESS
 	}
 
 	err := cmd.Start()
@@ -83,15 +85,17 @@ func RunOverlay(overlayDir, configPath, gameDir string) error {
 
 	fmt.Printf("[ame] runoverlay started with PID %d\n", cmd.Process.Pid)
 
+	// Release the process so it continues independently
+	cmd.Process.Release()
+
 	// Wait a moment and check if mod-tools is running
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(1 * time.Second)
 
 	checkCmd := exec.Command("tasklist", "/FI", "IMAGENAME eq mod-tools.exe", "/NH")
 	checkCmd.SysProcAttr = getSysProcAttr()
 	output, _ := checkCmd.Output()
-	if len(output) > 0 {
-		fmt.Printf("[ame] runoverlay process check: %s\n", string(output))
-	}
+	outputStr := string(output)
+	fmt.Printf("[ame] runoverlay process check: %s\n", outputStr)
 
 	return nil
 }
