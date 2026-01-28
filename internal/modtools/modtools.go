@@ -1,21 +1,30 @@
 package modtools
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"syscall"
-	"time"
 )
 
 var TOOLS_DIR = filepath.Join(os.Getenv("LOCALAPPDATA"), "ame", "tools")
 
+// Running process reference (like bocchi's this.runningProcess)
+var runningProcess *exec.Cmd
+
 // KillModTools kills any running mod-tools processes
 func KillModTools() {
+	// First try to gracefully stop our tracked process
+	if runningProcess != nil && runningProcess.Process != nil {
+		runningProcess.Process.Kill()
+		runningProcess = nil
+	}
+
+	// Then force kill any remaining mod-tools
 	cmd := exec.Command("taskkill", "/F", "/IM", "mod-tools.exe")
 	cmd.SysProcAttr = getSysProcAttr()
-	cmd.Run() // Ignore errors - process might not be running
+	cmd.Run()
 }
 
 // RunMkOverlay runs mod-tools mkoverlay command
@@ -51,7 +60,7 @@ func RunMkOverlay(modsDir, overlayDir, gameDir, modName string) (bool, int) {
 	return true, 0
 }
 
-// RunOverlay runs mod-tools runoverlay command (detached, like Bun version)
+// RunOverlay runs mod-tools runoverlay command (NOT detached, like bocchi)
 func RunOverlay(overlayDir, configPath, gameDir string) error {
 	modTools := filepath.Join(TOOLS_DIR, "mod-tools.exe")
 
@@ -59,43 +68,67 @@ func RunOverlay(overlayDir, configPath, gameDir string) error {
 		return fmt.Errorf("mod-tools.exe not found")
 	}
 
-	fmt.Printf("[ame] Running: %s runoverlay \"%s\" \"%s\" \"--game:%s\" --opts:configless\n",
+	fmt.Printf("[ame] Running: %s runoverlay \"%s\" \"%s\" \"--game:%s\" --opts:none\n",
 		modTools, overlayDir, configPath, gameDir)
 
+	// Like bocchi: detached: false, stdio: ['pipe', 'pipe', 'pipe']
 	cmd := exec.Command(modTools, "runoverlay",
 		overlayDir, configPath,
 		fmt.Sprintf("--game:%s", gameDir),
-		"--opts:configless")
+		"--opts:none") // bocchi uses --opts:none
 
-	// Match Bun's behavior: detached: true, stdio: "ignore"
-	// This means no stdin/stdout/stderr and CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS
-	cmd.Stdin = nil
-	cmd.Stdout = nil
-	cmd.Stderr = nil
 	cmd.Dir = TOOLS_DIR
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | 0x00000008, // DETACHED_PROCESS
+
+	// Create pipes for stdout/stderr (like bocchi's stdio: ['pipe', 'pipe', 'pipe'])
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stdout pipe: %v", err)
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stderr pipe: %v", err)
 	}
 
-	err := cmd.Start()
+	// Start the process (NOT detached)
+	err = cmd.Start()
 	if err != nil {
 		fmt.Printf("[ame] Failed to start runoverlay: %v\n", err)
 		return err
 	}
 
+	// Keep reference like bocchi's this.runningProcess
+	runningProcess = cmd
+
 	fmt.Printf("[ame] runoverlay started with PID %d\n", cmd.Process.Pid)
 
-	// Release the process so it continues independently
-	cmd.Process.Release()
+	// Read stdout in goroutine (keeps pipe alive, like bocchi's event listeners)
+	go func() {
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			line := scanner.Text()
+			fmt.Printf("[MOD-TOOLS]: %s\n", line)
+		}
+	}()
 
-	// Wait a moment and check if mod-tools is running
-	time.Sleep(1 * time.Second)
+	// Read stderr in goroutine
+	go func() {
+		scanner := bufio.NewScanner(stderr)
+		for scanner.Scan() {
+			line := scanner.Text()
+			fmt.Printf("[MOD-TOOLS ERROR]: %s\n", line)
+		}
+	}()
 
-	checkCmd := exec.Command("tasklist", "/FI", "IMAGENAME eq mod-tools.exe", "/NH")
-	checkCmd.SysProcAttr = getSysProcAttr()
-	output, _ := checkCmd.Output()
-	outputStr := string(output)
-	fmt.Printf("[ame] runoverlay process check: %s\n", outputStr)
+	// Monitor process exit in goroutine
+	go func() {
+		err := cmd.Wait()
+		if err != nil {
+			fmt.Printf("[ame] runoverlay exited with error: %v\n", err)
+		} else {
+			fmt.Println("[ame] runoverlay exited normally")
+		}
+		runningProcess = nil
+	}()
 
 	return nil
 }
@@ -105,4 +138,9 @@ func Exists() bool {
 	modTools := filepath.Join(TOOLS_DIR, "mod-tools.exe")
 	_, err := os.Stat(modTools)
 	return err == nil
+}
+
+// IsRunning checks if runoverlay is currently running
+func IsRunning() bool {
+	return runningProcess != nil && runningProcess.Process != nil
 }
