@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 )
 
 var TOOLS_DIR = filepath.Join(os.Getenv("LOCALAPPDATA"), "ame", "tools")
@@ -24,25 +25,24 @@ func RunMkOverlay(modsDir, overlayDir, gameDir, modName string) (bool, int) {
 		return false, 1
 	}
 
-	args := []string{
-		"mkoverlay",
-		modsDir,
-		overlayDir,
-		"--game:" + gameDir,
-		"--mods:" + modName,
-		"--noTFT",
-		"--ignoreConflict",
-	}
+	// Build argument string like PowerShell does
+	argStr := fmt.Sprintf(`mkoverlay "%s" "%s" "--game:%s" --mods:%s --noTFT --ignoreConflict`,
+		modsDir, overlayDir, gameDir, modName)
 
-	fmt.Printf("[ame] Running: mod-tools.exe %s\n", args)
+	fmt.Printf("[ame] Running: %s %s\n", modTools, argStr)
 
-	cmd := exec.Command(modTools, args...)
+	// Use cmd.exe /c to run, similar to how PowerShell processes arguments
+	cmd := exec.Command("cmd", "/c", modTools, "mkoverlay", modsDir, overlayDir,
+		fmt.Sprintf("--game:%s", gameDir),
+		fmt.Sprintf("--mods:%s", modName),
+		"--noTFT", "--ignoreConflict")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.SysProcAttr = getSysProcAttr()
 
 	err := cmd.Run()
 	if err != nil {
+		fmt.Printf("[ame] mkoverlay error: %v\n", err)
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			return false, exitErr.ExitCode()
 		}
@@ -52,7 +52,7 @@ func RunMkOverlay(modsDir, overlayDir, gameDir, modName string) (bool, int) {
 	return true, 0
 }
 
-// RunOverlay runs mod-tools runoverlay command (non-blocking/detached)
+// RunOverlay runs mod-tools runoverlay command (non-blocking)
 func RunOverlay(overlayDir, configPath, gameDir string) error {
 	modTools := filepath.Join(TOOLS_DIR, "mod-tools.exe")
 
@@ -60,27 +60,32 @@ func RunOverlay(overlayDir, configPath, gameDir string) error {
 		return fmt.Errorf("mod-tools.exe not found")
 	}
 
-	args := []string{
-		"runoverlay",
-		overlayDir,
-		configPath,
-		"--game:" + gameDir,
-		"--opts:configless",
-	}
+	fmt.Printf("[ame] Running: %s runoverlay \"%s\" \"%s\" \"--game:%s\" --opts:configless\n",
+		modTools, overlayDir, configPath, gameDir)
 
-	fmt.Printf("[ame] Running: mod-tools.exe %v\n", args)
-
-	cmd := exec.Command(modTools, args...)
+	// Use cmd.exe /c start to launch detached process like PowerShell's Start-Process
+	cmd := exec.Command("cmd", "/c", "start", "/b", "", modTools, "runoverlay",
+		overlayDir, configPath,
+		fmt.Sprintf("--game:%s", gameDir),
+		"--opts:configless")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.SysProcAttr = getDetachedSysProcAttr()
 
-	err := cmd.Start()
+	err := cmd.Run()
 	if err != nil {
 		fmt.Printf("[ame] Failed to start runoverlay: %v\n", err)
 		return err
 	}
-	fmt.Printf("[ame] runoverlay started with PID %d\n", cmd.Process.Pid)
+
+	// Wait a moment and check if mod-tools is running
+	time.Sleep(500 * time.Millisecond)
+
+	checkCmd := exec.Command("tasklist", "/FI", "IMAGENAME eq mod-tools.exe", "/NH")
+	output, _ := checkCmd.Output()
+	if len(output) > 0 {
+		fmt.Printf("[ame] runoverlay process check: %s\n", string(output))
+	}
+
 	return nil
 }
 
