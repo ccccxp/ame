@@ -146,7 +146,10 @@ func handleApply(conn *websocket.Conn, championID, skinID, baseSkinID string) {
 
 	// Run runoverlay
 	configPath := filepath.Join(OVERLAY_DIR, "cslol-config.json")
-	modtools.RunOverlay(OVERLAY_DIR, configPath, gameDir)
+	if err := modtools.RunOverlay(OVERLAY_DIR, configPath, gameDir); err != nil {
+		sendStatus(conn, "error", fmt.Sprintf("Failed to start overlay: %v", err))
+		return
+	}
 
 	sendStatus(conn, "ready", "Skin applied!")
 }

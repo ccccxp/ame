@@ -53,11 +53,11 @@ func RunMkOverlay(modsDir, overlayDir, gameDir, modName string) (bool, int) {
 }
 
 // RunOverlay runs mod-tools runoverlay command (non-blocking/detached)
-func RunOverlay(overlayDir, configPath, gameDir string) {
+func RunOverlay(overlayDir, configPath, gameDir string) error {
 	modTools := filepath.Join(TOOLS_DIR, "mod-tools.exe")
 
 	if _, err := os.Stat(modTools); os.IsNotExist(err) {
-		return
+		return fmt.Errorf("mod-tools.exe not found")
 	}
 
 	args := []string{
@@ -68,12 +68,20 @@ func RunOverlay(overlayDir, configPath, gameDir string) {
 		"--opts:configless",
 	}
 
-	fmt.Printf("[ame] Running: mod-tools.exe %s\n", args)
+	fmt.Printf("[ame] Running: mod-tools.exe %v\n", args)
 
 	cmd := exec.Command(modTools, args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	cmd.SysProcAttr = getDetachedSysProcAttr()
 
-	cmd.Start() // Start without waiting
+	err := cmd.Start()
+	if err != nil {
+		fmt.Printf("[ame] Failed to start runoverlay: %v\n", err)
+		return err
+	}
+	fmt.Printf("[ame] runoverlay started with PID %d\n", cmd.Process.Pid)
+	return nil
 }
 
 // Exists checks if mod-tools.exe exists

@@ -7,7 +7,10 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strings"
 	"syscall"
+
+	"golang.org/x/sys/windows"
 
 	"github.com/hoangvu12/ame/internal/server"
 	"github.com/hoangvu12/ame/internal/setup"
@@ -22,6 +25,38 @@ var setupConfig = setup.Config{
 	PluginURL: "https://raw.githubusercontent.com/hoangvu12/ame/main/src",
 }
 
+// isAdmin checks if running with admin privileges
+func isAdmin() bool {
+	_, err := os.Open("\\\\.\\PHYSICALDRIVE0")
+	if err != nil {
+		return false
+	}
+	return true
+}
+
+// runAsAdmin restarts the program with admin privileges
+func runAsAdmin() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	args := strings.Join(os.Args[1:], " ")
+
+	verbPtr, _ := syscall.UTF16PtrFromString("runas")
+	exePtr, _ := syscall.UTF16PtrFromString(exe)
+	argPtr, _ := syscall.UTF16PtrFromString(args)
+	cwdPtr, _ := syscall.UTF16PtrFromString(cwd)
+
+	err = windows.ShellExecute(0, verbPtr, exePtr, argPtr, cwdPtr, windows.SW_SHOWNORMAL)
+	return err
+}
+
 // killPenguLoader kills Pengu Loader process on exit
 func killPenguLoader() {
 	cmd := exec.Command("taskkill", "/F", "/IM", "Pengu Loader.exe")
@@ -30,6 +65,19 @@ func killPenguLoader() {
 }
 
 func main() {
+	// Check for admin privileges
+	if !isAdmin() {
+		fmt.Println("[ame] Requesting admin privileges...")
+		err := runAsAdmin()
+		if err != nil {
+			fmt.Printf("[ame] Failed to elevate: %v\n", err)
+			fmt.Println("[ame] Please run as administrator manually.")
+			fmt.Println("Press Enter to exit...")
+			fmt.Scanln()
+		}
+		os.Exit(0)
+	}
+
 	// Handle process exit signals
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
