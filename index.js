@@ -123,6 +123,14 @@ function injectStyles() {
       opacity: 1 !important;
       pointer-events: auto !important;
     }
+    .champ-select-bg.locked .lol-uikit-background-switcher-image {
+      filter: none !important;
+      -webkit-filter: none !important;
+      opacity: 1 !important;
+    }
+    .champ-select-bg.locked::after {
+      display: none !important;
+    }
     .skin-selection-item .lock-icon,
     .skin-selection-item .locked-icon,
     .skin-selection-item .skin-selection-item-unowned-overlay,
@@ -146,6 +154,14 @@ function injectStyles() {
       pointer-events: none !important;
       cursor: default !important;
       filter: grayscale(0.5) !important;
+    }
+    .toggle-ability-previews-button-container {
+      justify-content: center !important;
+      align-items: center !important;
+      gap: 20px !important;
+    }
+    .toggle-ability-previews-button-container .framing-line {
+      display: none !important;
     }
     .skin-selection-carousel .skin-selection-item {
       position: relative;
@@ -640,6 +656,14 @@ function ensureApplyButton() {
   if (document.getElementById(BUTTON_ID)) return;
   const container = document.querySelector('.toggle-ability-previews-button-container');
   if (!container) return;
+
+  // Hide framing lines and fix container layout
+  container.style.justifyContent = 'center';
+  container.style.alignItems = 'center';
+  container.style.gap = '20px';
+  container.querySelectorAll('.framing-line').forEach(line => {
+    line.style.display = 'none';
+  });
 
   const btn = document.createElement('lol-uikit-flat-button');
   btn.id = BUTTON_ID;
