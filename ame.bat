@@ -1,33 +1,36 @@
 @echo off
+setlocal EnableDelayedExpansion
 
-:: Self-elevate to admin (needed to suspend game process)
-net session >nul 2>&1
-if errorlevel 1 (
-    powershell -NoProfile -Command "Start-Process -Verb RunAs -FilePath '%~f0'"
-    exit /b
-)
+:: Setup ANSI escape codes
+for /F %%a in ('"prompt $E$S & echo on & for %%b in (1) do rem"') do set "ESC=%%a"
 
-setlocal
-set "AME_DIR=%LOCALAPPDATA%\ame"
-set "PENGU_DIR=%AME_DIR%\pengu"
+:: Colors
+set "R=%ESC%[0m"
+set "GREEN=%ESC%[92m"
+set "CYAN=%ESC%[96m"
+set "DIM=%ESC%[90m"
+set "BOLD=%ESC%[1m"
 
-:: Start Pengu Loader
-if exist "%PENGU_DIR%\Pengu Loader.exe" (
-    echo Starting Pengu Loader...
-    start "" "%PENGU_DIR%\Pengu Loader.exe"
-) else (
-    echo Pengu Loader not found. Run install.bat first.
-    pause
-    exit /b 1
-)
-
-:: Start WebSocket server (stays in foreground)
-echo Starting ame server...
+:: Header
 echo.
+echo   %CYAN%======================================%R%
+echo   %CYAN%  %BOLD%ame%R%  %DIM%skin changer%R%
+echo   %CYAN%======================================%R%
+echo.
+echo   %DIM%Starting server...%R%
+echo   %DIM%Open League client to see the skin selector.%R%
+echo   %DIM%Press Ctrl+C to stop.%R%
+echo.
+echo   %DIM%--------------------------------------%R%
+echo.
+
+:: Start WebSocket server
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0server.ps1"
+
 echo.
-echo Cleaning up...
-taskkill /F /IM "Pengu Loader.exe" >nul 2>&1
+echo   %DIM%--------------------------------------%R%
+echo   %DIM%Cleaning up...%R%
 taskkill /F /IM "mod-tools.exe" >nul 2>&1
-echo Server exited.
+echo   %GREEN%Server stopped.%R%
+echo.
 pause

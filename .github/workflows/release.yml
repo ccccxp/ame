@@ -1,0 +1,72 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create installer package
+        shell: pwsh
+        run: |
+          # Create build directory
+          New-Item -ItemType Directory -Force -Path "build/ame"
+
+          # Copy files to build directory
+          Copy-Item -Recurse "src" "build/ame/src"
+          Copy-Item "install.bat" "build/ame/"
+          Copy-Item "uninstall.bat" "build/ame/"
+          Copy-Item "ame.bat" "build/ame/"
+          Copy-Item "server.ps1" "build/ame/"
+          Copy-Item "update.bat" "build/ame/"
+
+          # Create 7z archive
+          7z a -t7z "build/ame.7z" "./build/ame/*" -r
+
+          # Download 7-Zip SFX module (console version for silent extraction)
+          Invoke-WebRequest -Uri "https://www.7-zip.org/a/lzma2409.7z" -OutFile "build/lzma.7z"
+          7z e "build/lzma.7z" -o"build" "bin/7zSD.sfx" -r -y
+
+          # Create SFX config
+          @"
+          ;!@Install@!UTF-8!
+          Title="ame Installer"
+          BeginPrompt="Install ame - League of Legends Skin Changer?"
+          RunProgram="install.bat"
+          ;!@InstallEnd@!
+          "@ | Out-File -FilePath "build/config.txt" -Encoding ASCII
+
+          # Combine SFX stub + config + archive into final exe
+          cmd /c copy /b "build\7zSD.sfx" + "build\config.txt" + "build\ame.7z" "build\ame-installer.exe"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ame ${{ steps.version.outputs.VERSION }}
+          body: |
+            ## Installation
+            1. Download `ame-installer.exe`
+            2. Run the installer
+            3. Follow the on-screen instructions
+
+            ## What's included
+            - ame skin changer plugin
+            - Pengu Loader (auto-installed if missing)
+            - mod-tools (auto-installed if missing)
+          files: build/ame-installer.exe
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
