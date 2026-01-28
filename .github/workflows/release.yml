@@ -21,38 +21,17 @@ jobs:
         shell: bash
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
-      - name: Create installer package
-        shell: pwsh
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Build server
+        shell: bash
         run: |
-          # Create build directory
-          New-Item -ItemType Directory -Force -Path "build/ame"
-
-          # Copy files to build directory
-          Copy-Item -Recurse "src" "build/ame/src"
-          Copy-Item "install.bat" "build/ame/"
-          Copy-Item "uninstall.bat" "build/ame/"
-          Copy-Item "ame.bat" "build/ame/"
-          Copy-Item "server.ps1" "build/ame/"
-          Copy-Item "update.bat" "build/ame/"
-
-          # Create 7z archive
-          7z a -t7z "build/ame.7z" "./build/ame/*" -r
-
-          # Download 7-Zip SFX module (console version for silent extraction)
-          Invoke-WebRequest -Uri "https://www.7-zip.org/a/lzma2409.7z" -OutFile "build/lzma.7z"
-          7z e "build/lzma.7z" -o"build" "bin/7zSD.sfx" -r -y
-
-          # Create SFX config
-          @"
-          ;!@Install@!UTF-8!
-          Title="ame Installer"
-          BeginPrompt="Install ame - League of Legends Skin Changer?"
-          RunProgram="install.bat"
-          ;!@InstallEnd@!
-          "@ | Out-File -FilePath "build/config.txt" -Encoding ASCII
-
-          # Combine SFX stub + config + archive into final exe
-          cmd /c copy /b "build\7zSD.sfx" + "build\config.txt" + "build\ame.7z" "build\ame-installer.exe"
+          cd server
+          bun install
+          bun build --compile --target=bun-windows-x64 server.ts --outfile ../dist/ame
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -60,15 +39,27 @@ jobs:
           name: ame ${{ steps.version.outputs.VERSION }}
           body: |
             ## Installation
-            1. Download `ame-installer.exe`
-            2. Run the installer
-            3. Follow the on-screen instructions
+            1. Download `ame.exe`
+            2. Run it - everything is set up automatically on first run
+            3. Open League client to use the skin selector
 
-            ## What's included
-            - ame skin changer plugin
-            - Pengu Loader (auto-installed if missing)
-            - mod-tools (auto-installed if missing)
-          files: build/ame-installer.exe
+            ## What happens on first run
+            - Downloads and installs mod-tools
+            - Downloads and installs Pengu Loader
+            - Installs the ame plugin
+            - Asks you to activate Pengu Loader (one-time)
+            - Starts the skin changer server
+
+            ## Usage
+            - Run `ame.exe` before opening League
+            - Pick a champion in champ select
+            - Click "Apply Skin" to use any skin
+
+            ## Uninstall
+            Download and run `uninstall.bat` to remove ame completely.
+          files: |
+            dist/ame.exe
+            uninstall.bat
           draft: false
           prerelease: false
         env:

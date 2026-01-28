@@ -13,7 +13,6 @@ set "YELLOW=%ESC%[93m"
 set "DIM=%ESC%[90m"
 set "BOLD=%ESC%[1m"
 
-set "CHECK=%GREEN%OK%R%"
 set "AME_DIR=%LOCALAPPDATA%\ame"
 set "PENGU_DIR=%AME_DIR%\pengu"
 
@@ -25,52 +24,54 @@ echo   %CYAN%======================================%R%
 echo.
 
 :: Confirm
-echo   %YELLOW%This will remove ame and all its components.%R%
+echo   %YELLOW%This will remove ame and all its data.%R%
 echo.
-set /p "CONFIRM=   Continue? (y/n): "
+set /p "CONFIRM=  Are you sure? (y/N): "
 if /i not "%CONFIRM%"=="y" (
     echo.
-    echo   %DIM%Cancelled.%R%
+    echo   %DIM%Uninstall cancelled.%R%
     echo.
     pause
-    exit /b
+    exit /b 0
 )
+
 echo.
 
-:: Stop processes
+:: Kill running processes
 echo   %DIM%Stopping processes...%R%
+taskkill /F /IM "ame.exe" >nul 2>&1
+taskkill /F /IM "ame-server.exe" >nul 2>&1
 taskkill /F /IM "mod-tools.exe" >nul 2>&1
 taskkill /F /IM "Pengu Loader.exe" >nul 2>&1
-timeout /t 2 /nobreak >nul
-echo         [%CHECK%] Processes stopped
 
-:: Deactivate Pengu (open it so user can deactivate)
-reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\LeagueClientUx.exe" /v Debugger >nul 2>&1
+:: Deactivate Pengu Loader (remove IFEO registry key)
+echo   %DIM%Deactivating Pengu Loader...%R%
+reg delete "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\LeagueClientUx.exe" /f >nul 2>&1
 if %errorlevel%==0 (
-    echo.
-    echo   %DIM%Deactivating Pengu Loader...%R%
-    echo         %YELLOW%Please click "Activate" to turn it OFF,%R%
-    echo         %YELLOW%then close the window.%R%
-    echo.
-    if exist "%PENGU_DIR%\Pengu Loader.exe" (
-        start "" /wait "%PENGU_DIR%\Pengu Loader.exe"
-        echo         [%CHECK%] Pengu Loader deactivated
-    )
+    echo   %GREEN%[OK]%R% Pengu Loader deactivated
+) else (
+    echo   %DIM%[--]%R% Pengu Loader was not activated or requires admin rights
 )
 
-:: Remove files
-echo.
-echo   %DIM%Removing files...%R%
+:: Remove ame directory
+echo   %DIM%Removing ame files...%R%
 if exist "%AME_DIR%" (
-    rmdir /s /q "%AME_DIR%"
-    echo         [%CHECK%] Files removed
+    rmdir /s /q "%AME_DIR%" >nul 2>&1
+    if exist "%AME_DIR%" (
+        echo   %RED%[ERR]%R% Could not fully remove %AME_DIR%
+        echo         %DIM%Some files may be in use. Try closing League client first.%R%
+    ) else (
+        echo   %GREEN%[OK]%R% Removed %AME_DIR%
+    )
 ) else (
-    echo         %DIM%Nothing to remove%R%
+    echo   %DIM%[--]%R% ame directory not found
 )
 
 :: Footer
 echo.
 echo   %DIM%--------------------------------------%R%
-echo   %GREEN%Uninstall complete.%R%
+echo   %GREEN%Uninstall complete!%R%
+echo.
+echo   %DIM%Note: This uninstaller can be deleted manually.%R%
 echo.
 pause
