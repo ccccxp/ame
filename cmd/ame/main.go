@@ -100,7 +100,7 @@ func checkForUpdates() {
 	fmt.Println()
 	fmt.Printf("  New version: %s (current: %s)\n", result.LatestVersion, Version)
 
-	if result.Downloaded {
+	if result.Downloaded && updater.VerifyUpdateFile() {
 		fmt.Println()
 		fmt.Print("  Update now? [Y/n]: ")
 

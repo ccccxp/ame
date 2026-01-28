@@ -114,8 +114,16 @@ func downloadUpdate(url string) error {
 	}
 	defer out.Close()
 
-	_, err = io.Copy(out, resp.Body)
-	return err
+	written, err := io.Copy(out, resp.Body)
+	if err != nil {
+		return err
+	}
+
+	if written < 1024 {
+		return fmt.Errorf("download too small (%d bytes), likely failed", written)
+	}
+
+	return nil
 }
 
 // compareVersions returns true if latest is newer than current
@@ -210,6 +218,16 @@ func CleanupUpdateFile() {
 	os.Remove(UPDATE_FILE)
 }
 
+// VerifyUpdateFile checks if the update file exists and is valid
+func VerifyUpdateFile() bool {
+	info, err := os.Stat(UPDATE_FILE)
+	if err != nil {
+		return false
+	}
+	// Must be at least 1MB for a valid exe
+	return info.Size() > 1024*1024
+}
+
 // ApplyUpdate creates a batch script to replace the exe and relaunch
 // Returns the path to the batch script
 func ApplyUpdate(currentExePath string) (string, error) {
@@ -217,17 +235,37 @@ func ApplyUpdate(currentExePath string) (string, error) {
 
 	// Batch script that:
 	// 1. Waits for the current process to exit
-	// 2. Copies the new exe over the old one
-	// 3. Deletes the update file and itself
-	// 4. Relaunches the app
+	// 2. Verifies update file exists
+	// 3. Copies the new exe over the old one (with retry)
+	// 4. Only proceeds if copy succeeded
+	// 5. Deletes the update file and relaunches
 	script := fmt.Sprintf(`@echo off
+setlocal
+
+set "UPDATE_FILE=%s"
+set "TARGET_FILE=%s"
+
 echo Updating ame...
 timeout /t 2 /nobreak >nul
-copy /y "%s" "%s"
-del "%s"
-start "" "%s"
+
+if not exist "%%UPDATE_FILE%%" (
+    echo Update file not found: %%UPDATE_FILE%%
+    pause
+    exit /b 1
+)
+
+:retry
+copy /y "%%UPDATE_FILE%%" "%%TARGET_FILE%%"
+if errorlevel 1 (
+    echo Copy failed, retrying in 2 seconds...
+    timeout /t 2 /nobreak >nul
+    goto retry
+)
+
+del "%%UPDATE_FILE%%"
+start "" "%%TARGET_FILE%%"
 del "%%~f0"
-`, UPDATE_FILE, currentExePath, UPDATE_FILE, currentExePath)
+`, UPDATE_FILE, currentExePath)
 
 	if err := os.WriteFile(scriptPath, []byte(script), 0644); err != nil {
 		return "", err
