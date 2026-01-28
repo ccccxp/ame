@@ -54,8 +54,9 @@ if errorlevel 1 (
 echo.
 echo Copying ame plugin to Pengu plugins...
 set "PLUGIN_DIR=%PENGU_DIR%\plugins\ame"
-if not exist "%PLUGIN_DIR%" mkdir "%PLUGIN_DIR%"
-powershell -NoProfile -Command "Copy-Item -Force '%~dp0index.js' '%PLUGIN_DIR%\index.js'"
+if exist "%PLUGIN_DIR%" rmdir /s /q "%PLUGIN_DIR%"
+mkdir "%PLUGIN_DIR%"
+powershell -NoProfile -Command "Copy-Item -Recurse -Force '%~dp0src\*' '%PLUGIN_DIR%\'"
 if errorlevel 1 (
     echo   FAILED: could not copy plugin
     set "FAILED=1"
