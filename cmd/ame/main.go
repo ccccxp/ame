@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,6 +14,8 @@ import (
 
 	"golang.org/x/sys/windows"
 
+	"github.com/hoangvu12/ame/internal/config"
+	"github.com/hoangvu12/ame/internal/game"
 	"github.com/hoangvu12/ame/internal/server"
 	"github.com/hoangvu12/ame/internal/setup"
 	"github.com/hoangvu12/ame/internal/updater"
@@ -190,6 +193,46 @@ func disableQuickEdit() {
 	setConsoleMode.Call(uintptr(handle), uintptr(mode))
 }
 
+// clearConsole clears the console window
+func clearConsole() {
+	cmd := exec.Command("cmd", "/c", "cls")
+	cmd.Stdout = os.Stdout
+	cmd.Run()
+}
+
+// promptSettings shows an interactive settings menu in the console
+func promptSettings() {
+	clearConsole()
+	reader := bufio.NewReader(os.Stdin)
+
+	gamePath := config.GamePath()
+	if gamePath == "" {
+		gamePath = "(not set)"
+	}
+
+	fmt.Println()
+	fmt.Println("  Settings")
+	fmt.Println("  ────────")
+	fmt.Println()
+	fmt.Printf("  1. Game Path: %s\n", gamePath)
+	fmt.Println()
+	fmt.Print("  Choice (or press Enter to go back): ")
+
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(input)
+
+	switch input {
+	case "1":
+		fmt.Println()
+		game.PromptGameDir()
+	}
+
+	clearConsole()
+	printBanner()
+	fmt.Println("  Ready! Open League client to use skins.")
+	fmt.Println()
+}
+
 func cleanup() {
 	fmt.Println("\n  Shutting down...")
 	server.HandleCleanup()
@@ -210,6 +253,11 @@ func main() {
 	if !isAdmin() {
 		runAsAdmin()
 		os.Exit(0)
+	}
+
+	// Load settings (migrates gamedir.txt → settings.json on first run)
+	if err := config.Init(); err != nil {
+		fmt.Printf("  ! Failed to load settings: %v\n", err)
 	}
 
 	// Print banner
@@ -249,6 +297,16 @@ func main() {
 
 	// Save current version after successful setup
 	updater.SaveVersion(Version)
+
+	// Detect game directory (prompt user if auto-detection fails)
+	fmt.Print("  Detecting League of Legends... ")
+	if dir := game.FindGameDir(); dir != "" {
+		fmt.Println("found")
+	} else {
+		fmt.Println("not found")
+		fmt.Println()
+		game.PromptGameDir()
+	}
 
 	// Start WebSocket server in background
 	go server.StartServer(PORT)

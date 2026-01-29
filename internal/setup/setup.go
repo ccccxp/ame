@@ -9,17 +9,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/hoangvu12/ame/internal/config"
 )
 
-// Paths
 var (
-	AME_DIR     = filepath.Join(os.Getenv("LOCALAPPDATA"), "ame")
-	TOOLS_DIR   = filepath.Join(AME_DIR, "tools")
-	SKINS_DIR   = filepath.Join(AME_DIR, "skins")
-	MODS_DIR    = filepath.Join(AME_DIR, "mods")
-	OVERLAY_DIR = filepath.Join(AME_DIR, "overlay")
-	PENGU_DIR   = filepath.Join(AME_DIR, "pengu")
-	PLUGIN_DIR  = filepath.Join(PENGU_DIR, "plugins", "ame")
+	PENGU_DIR  = config.PenguDir
+	PLUGIN_DIR = filepath.Join(PENGU_DIR, "plugins", "ame")
 )
 
 // GetExistingPenguDir detects an existing Pengu Loader installation from the registry
@@ -71,7 +67,7 @@ func IsUsingExternalPengu() bool {
 		return false
 	}
 	// Check if it's NOT in our default location
-	defaultPenguDir := filepath.Join(os.Getenv("LOCALAPPDATA"), "ame", "pengu")
+	defaultPenguDir := config.PenguDir
 	return !strings.EqualFold(filepath.Clean(existingDir), filepath.Clean(defaultPenguDir))
 }
 
@@ -232,7 +228,7 @@ func launchPenguForActivation() error {
 
 // createDirectories creates base directories (not Pengu-related, those are created after detection)
 func createDirectories() {
-	dirs := []string{AME_DIR, TOOLS_DIR, SKINS_DIR, MODS_DIR, OVERLAY_DIR}
+	dirs := []string{config.AmeDir, config.ToolsDir, config.SkinsDir, config.ModsDir, config.OverlayDir}
 	for _, dir := range dirs {
 		os.MkdirAll(dir, os.ModePerm)
 	}
@@ -240,7 +236,7 @@ func createDirectories() {
 
 // setupModTools downloads mod-tools if not present
 func setupModTools(toolsURL string) bool {
-	modToolsPath := filepath.Join(TOOLS_DIR, "mod-tools.exe")
+	modToolsPath := filepath.Join(config.ToolsDir, "mod-tools.exe")
 	if _, err := os.Stat(modToolsPath); err == nil {
 		status("mod-tools", true)
 		return true
@@ -251,7 +247,7 @@ func setupModTools(toolsURL string) bool {
 
 	for _, file := range TOOL_FILES {
 		url := toolsURL + "/" + file
-		dest := filepath.Join(TOOLS_DIR, file)
+		dest := filepath.Join(config.ToolsDir, file)
 		if err := downloadFile(url, dest); err != nil {
 			allSuccess = false
 		}
@@ -287,7 +283,7 @@ func setupPenguLoader(penguURL string) bool {
 
 	// Download Pengu Loader
 	info("Downloading Pengu Loader...")
-	zipPath := filepath.Join(AME_DIR, "pengu.zip")
+	zipPath := filepath.Join(config.AmeDir, "pengu.zip")
 
 	if err := downloadFile(penguURL, zipPath); err != nil {
 		status("Pengu Loader", false)
@@ -308,7 +304,7 @@ func setupPenguLoader(penguURL string) bool {
 // SetupPlugin downloads and extracts plugin zip (exported for use after updates)
 func SetupPlugin(pluginZipURL string) bool {
 	info("Downloading plugin...")
-	zipPath := filepath.Join(AME_DIR, "plugin.zip")
+	zipPath := filepath.Join(config.AmeDir, "plugin.zip")
 
 	if err := downloadFile(pluginZipURL, zipPath); err != nil {
 		status("Plugin", false)

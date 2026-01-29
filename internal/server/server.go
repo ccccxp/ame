@@ -10,15 +10,10 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/hoangvu12/ame/internal/config"
 	"github.com/hoangvu12/ame/internal/game"
 	"github.com/hoangvu12/ame/internal/modtools"
 	"github.com/hoangvu12/ame/internal/skin"
-)
-
-var (
-	AME_DIR     = filepath.Join(os.Getenv("LOCALAPPDATA"), "ame")
-	MODS_DIR    = filepath.Join(AME_DIR, "mods")
-	OVERLAY_DIR = filepath.Join(AME_DIR, "overlay")
 )
 
 // ApplyMessage represents an apply skin request
@@ -125,8 +120,8 @@ func handleApply(conn *websocket.Conn, championID, skinID, baseSkinID string) {
 	time.Sleep(300 * time.Millisecond)
 
 	// Clean and extract to mods dir
-	os.RemoveAll(MODS_DIR)
-	modSubDir := filepath.Join(MODS_DIR, fmt.Sprintf("skin_%s", skinID))
+	os.RemoveAll(config.ModsDir)
+	modSubDir := filepath.Join(config.ModsDir, fmt.Sprintf("skin_%s", skinID))
 	os.MkdirAll(modSubDir, os.ModePerm)
 
 	if err := skin.Extract(zipPath, modSubDir); err != nil {
@@ -135,13 +130,13 @@ func handleApply(conn *websocket.Conn, championID, skinID, baseSkinID string) {
 	}
 
 	// Clean overlay dir
-	os.RemoveAll(OVERLAY_DIR)
-	os.MkdirAll(OVERLAY_DIR, os.ModePerm)
+	os.RemoveAll(config.OverlayDir)
+	os.MkdirAll(config.OverlayDir, os.ModePerm)
 
 	// Run mkoverlay
 	sendStatus(conn, "injecting", "Applying skin...")
 	modName := fmt.Sprintf("skin_%s", skinID)
-	success, exitCode := modtools.RunMkOverlay(MODS_DIR, OVERLAY_DIR, gameDir, modName)
+	success, exitCode := modtools.RunMkOverlay(config.ModsDir, config.OverlayDir, gameDir, modName)
 
 	if !success {
 		sendStatus(conn, "error", fmt.Sprintf("Failed to apply skin (exit code %d)", exitCode))
@@ -149,8 +144,8 @@ func handleApply(conn *websocket.Conn, championID, skinID, baseSkinID string) {
 	}
 
 	// Run runoverlay
-	configPath := filepath.Join(OVERLAY_DIR, "cslol-config.json")
-	if err := modtools.RunOverlay(OVERLAY_DIR, configPath, gameDir); err != nil {
+	configPath := filepath.Join(config.OverlayDir, "cslol-config.json")
+	if err := modtools.RunOverlay(config.OverlayDir, configPath, gameDir); err != nil {
 		sendStatus(conn, "error", fmt.Sprintf("Failed to start overlay: %v", err))
 		return
 	}
@@ -161,7 +156,7 @@ func handleApply(conn *websocket.Conn, championID, skinID, baseSkinID string) {
 // HandleCleanup handles cleanup request
 func HandleCleanup() {
 	modtools.KillModTools()
-	os.RemoveAll(OVERLAY_DIR)
+	os.RemoveAll(config.OverlayDir)
 }
 
 // handleConnection handles a single WebSocket connection

@@ -8,15 +8,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/hoangvu12/ame/internal/config"
 )
 
 const SKIN_BASE_URL = "https://raw.githubusercontent.com/Alban1911/LeagueSkins/main/skins"
 
-var SKINS_DIR = filepath.Join(os.Getenv("LOCALAPPDATA"), "ame", "skins")
-
 // Download downloads a skin file (.fantome or .zip)
 func Download(championID, skinID, baseSkinID string) (string, error) {
-	skinDir := filepath.Join(SKINS_DIR, championID, skinID)
+	skinDir := filepath.Join(config.SkinsDir, championID, skinID)
 	os.MkdirAll(skinDir, os.ModePerm)
 
 	extensions := []string{"fantome", "zip"}
@@ -92,7 +92,7 @@ func Extract(archivePath, destDir string) error {
 
 // GetCachedPath returns the path to a cached skin file if it exists
 func GetCachedPath(championID, skinID string) string {
-	skinDir := filepath.Join(SKINS_DIR, championID, skinID)
+	skinDir := filepath.Join(config.SkinsDir, championID, skinID)
 
 	// Check for fantome first
 	fantomePath := filepath.Join(skinDir, fmt.Sprintf("%s.fantome", skinID))

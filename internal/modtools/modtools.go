@@ -8,9 +8,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"time"
-)
 
-var TOOLS_DIR = filepath.Join(os.Getenv("LOCALAPPDATA"), "ame", "tools")
+	"github.com/hoangvu12/ame/internal/config"
+)
 
 // Running process reference (like bocchi's this.runningProcess)
 var runningProcess *exec.Cmd
@@ -51,7 +51,7 @@ func KillModTools() {
 
 // RunMkOverlay runs mod-tools mkoverlay command
 func RunMkOverlay(modsDir, overlayDir, gameDir, modName string) (bool, int) {
-	modTools := filepath.Join(TOOLS_DIR, "mod-tools.exe")
+	modTools := filepath.Join(config.ToolsDir, "mod-tools.exe")
 
 	if _, err := os.Stat(modTools); os.IsNotExist(err) {
 		return false, 1
@@ -68,7 +68,7 @@ func RunMkOverlay(modsDir, overlayDir, gameDir, modName string) (bool, int) {
 		"--noTFT", "--ignoreConflict")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Dir = TOOLS_DIR
+	cmd.Dir = config.ToolsDir
 
 	err := cmd.Run()
 	if err != nil {
@@ -87,7 +87,7 @@ var stdinPipe io.WriteCloser
 
 // RunOverlay runs mod-tools runoverlay command (NOT detached, like bocchi)
 func RunOverlay(overlayDir, configPath, gameDir string) error {
-	modTools := filepath.Join(TOOLS_DIR, "mod-tools.exe")
+	modTools := filepath.Join(config.ToolsDir, "mod-tools.exe")
 
 	if _, err := os.Stat(modTools); os.IsNotExist(err) {
 		return fmt.Errorf("mod-tools.exe not found")
@@ -102,7 +102,7 @@ func RunOverlay(overlayDir, configPath, gameDir string) error {
 		fmt.Sprintf("--game:%s", gameDir),
 		"--opts:none") // bocchi uses --opts:none
 
-	cmd.Dir = TOOLS_DIR
+	cmd.Dir = config.ToolsDir
 
 	// Create pipes for stdin/stdout/stderr (like bocchi's stdio: ['pipe', 'pipe', 'pipe'])
 	stdin, err := cmd.StdinPipe()
@@ -168,7 +168,7 @@ func RunOverlay(overlayDir, configPath, gameDir string) error {
 
 // Exists checks if mod-tools.exe exists
 func Exists() bool {
-	modTools := filepath.Join(TOOLS_DIR, "mod-tools.exe")
+	modTools := filepath.Join(config.ToolsDir, "mod-tools.exe")
 	_, err := os.Stat(modTools)
 	return err == nil
 }

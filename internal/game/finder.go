@@ -1,26 +1,65 @@
 package game
 
 import (
+	"bufio"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/hoangvu12/ame/internal/config"
 )
 
-// FindGameDir finds League of Legends Game directory using multiple detection methods
+var cachedGameDir string
+
+// isValidGameDir checks if a directory contains League of Legends.exe
+func isValidGameDir(dir string) bool {
+	return fileExists(filepath.Join(dir, "League of Legends.exe"))
+}
+
+// getSavedGameDir reads the saved game directory from config
+func getSavedGameDir() string {
+	dir := config.GamePath()
+	if dir != "" && isValidGameDir(dir) {
+		return dir
+	}
+	return ""
+}
+
+// SaveGameDir persists the game directory to config
+func SaveGameDir(dir string) {
+	config.SetGamePath(dir)
+}
+
+// FindGameDir finds League of Legends Game directory using multiple detection methods.
+// Returns the cached/saved path if still valid, otherwise runs auto-detection.
 func FindGameDir() string {
-	// 1. Common paths on all fixed drives
+	// 0. In-memory cache
+	if cachedGameDir != "" && isValidGameDir(cachedGameDir) {
+		return cachedGameDir
+	}
+
+	// 1. Saved path from previous run
+	if dir := getSavedGameDir(); dir != "" {
+		cachedGameDir = dir
+		return dir
+	}
+
+	// 2. Common paths on all fixed drives
 	drives := getFixedDrives()
 	for _, drive := range drives {
 		path := filepath.Join(drive, "Riot Games", "League of Legends", "Game")
-		if fileExists(filepath.Join(path, "League of Legends.exe")) {
+		if isValidGameDir(path) {
+			cachedGameDir = path
+			SaveGameDir(path)
 			return path
 		}
 	}
 
-	// 2. RiotClientInstalls.json
+	// 3. RiotClientInstalls.json
 	rcPath := `C:\ProgramData\Riot Games\RiotClientInstalls.json`
 	if data, err := os.ReadFile(rcPath); err == nil {
 		var rc map[string]interface{}
@@ -44,7 +83,9 @@ func FindGameDir() string {
 				if leagueRe.MatchString(p) {
 					candidate := filepath.Join(p, "..")
 					gameDir := filepath.Join(candidate, "Game")
-					if fileExists(filepath.Join(gameDir, "League of Legends.exe")) {
+					if isValidGameDir(gameDir) {
+						cachedGameDir = gameDir
+						SaveGameDir(gameDir)
 						return gameDir
 					}
 				}
@@ -52,31 +93,68 @@ func FindGameDir() string {
 		}
 	}
 
-	// 3. Running LeagueClientUx.exe process
+	// 4. Running LeagueClientUx.exe process
 	if output := runCommand("wmic", "process", "where", "name='LeagueClientUx.exe'", "get", "ExecutablePath", "/value"); output != "" {
 		re := regexp.MustCompile(`ExecutablePath=(.+)`)
 		if match := re.FindStringSubmatch(output); len(match) > 1 {
 			exePath := strings.TrimSpace(match[1])
 			gameDir := filepath.Join(exePath, "..", "Game")
-			if fileExists(filepath.Join(gameDir, "League of Legends.exe")) {
+			if isValidGameDir(gameDir) {
+				cachedGameDir = gameDir
+				SaveGameDir(gameDir)
 				return gameDir
 			}
 		}
 	}
 
-	// 4. Registry lookup
+	// 5. Registry lookup
 	if output := runCommand("reg", "query", `HKLM\SOFTWARE\WOW6432Node\Riot Games, Inc\League of Legends`, "/v", "Location"); output != "" {
 		re := regexp.MustCompile(`Location\s+REG_SZ\s+(.+)`)
 		if match := re.FindStringSubmatch(output); len(match) > 1 {
 			loc := strings.TrimSpace(match[1])
 			gameDir := filepath.Join(loc, "Game")
-			if fileExists(filepath.Join(gameDir, "League of Legends.exe")) {
+			if isValidGameDir(gameDir) {
+				cachedGameDir = gameDir
+				SaveGameDir(gameDir)
 				return gameDir
 			}
 		}
 	}
 
 	return ""
+}
+
+// PromptGameDir asks the user to manually enter the game directory.
+// Returns the validated path, or empty string if the user skips.
+func PromptGameDir() string {
+	reader := bufio.NewReader(os.Stdin)
+
+	fmt.Println("  Enter the path to the Game folder, for example:")
+	fmt.Println("  C:\\Riot Games\\League of Legends\\Game")
+	fmt.Println()
+
+	for {
+		fmt.Print("  Path (or press Enter to skip): ")
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(input)
+
+		if input == "" {
+			return ""
+		}
+
+		// Remove surrounding quotes if user pasted a quoted path
+		input = strings.Trim(input, `"'`)
+
+		if isValidGameDir(input) {
+			cachedGameDir = input
+			SaveGameDir(input)
+			fmt.Printf("  > %s\n", input)
+			return input
+		}
+
+		fmt.Println("  ! League of Legends.exe not found in that folder.")
+		fmt.Println()
+	}
 }
 
 // getFixedDrives returns list of accessible drives (C:, D:, etc.)

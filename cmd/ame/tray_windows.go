@@ -83,6 +83,14 @@ func onTrayReady() {
 
 	systray.AddSeparator()
 
+	mSettings := systray.AddMenuItem("Settings", "Open settings")
+	mSettings.Click(func() {
+		showConsole()
+		promptSettings()
+	})
+
+	systray.AddSeparator()
+
 	mQuit := systray.AddMenuItem("Quit", "Exit the application")
 	mQuit.Click(func() {
 		systray.Quit()

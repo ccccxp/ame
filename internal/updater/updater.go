@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/hoangvu12/ame/internal/config"
 )
 
 const (
@@ -16,9 +18,8 @@ const (
 )
 
 var (
-	AME_DIR      = filepath.Join(os.Getenv("LOCALAPPDATA"), "ame")
-	VERSION_FILE = filepath.Join(AME_DIR, "version.txt")
-	UPDATE_FILE  = filepath.Join(AME_DIR, "ame_update.exe")
+	VERSION_FILE = filepath.Join(config.AmeDir, "version.txt")
+	UPDATE_FILE  = filepath.Join(config.AmeDir, "ame_update.exe")
 )
 
 // GitHubRelease represents the GitHub API response for a release
@@ -54,7 +55,7 @@ func GetSavedVersion() string {
 
 // SaveVersion writes the version to the version file
 func SaveVersion(version string) error {
-	os.MkdirAll(AME_DIR, os.ModePerm)
+	os.MkdirAll(config.AmeDir, os.ModePerm)
 	return os.WriteFile(VERSION_FILE, []byte(version), 0644)
 }
 
