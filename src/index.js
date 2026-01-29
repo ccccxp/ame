@@ -4,13 +4,14 @@ import { injectStyles, removeStyles, unlockSkinCarousel } from './styles';
 import { wsConnect, wsSend } from './websocket';
 import { ensureApplyButton, removeApplyButton, updateButtonState } from './ui';
 import { ensureChromaButton, closeChromaPanel, setLastChampionId, setAppliedSkinName } from './chroma';
-import { handleSessionUpdate, resetAutoApply, fetchAndLogGameflow, fetchAndLogTimer, checkSkinChange } from './autoApply';
+import { resetAutoApply, fetchAndLogGameflow, fetchAndLogTimer, checkAutoApply } from './autoApply';
 
 let pollTimer = null;
 let observer = null;
 let inChampSelect = false;
 let lastChampionId = null;
 let injectionTriggered = false;
+let pollRunning = false;
 
 function stopObserving() {
   if (observer) { observer.disconnect(); observer = null; }
@@ -23,18 +24,24 @@ function stopObserving() {
 
 async function pollUI() {
   if (!inChampSelect) return;
-  ensureApplyButton();
-  unlockSkinCarousel();
-  updateButtonState();
+  if (pollRunning) return;
+  pollRunning = true;
+  try {
+    ensureApplyButton();
+    unlockSkinCarousel();
+    updateButtonState();
 
-  const champId = lastChampionId || await getMyChampionId();
-  if (champId) {
-    await loadChampionSkins(champId);
-    ensureChromaButton();
+    const champId = lastChampionId || await getMyChampionId();
+    if (champId) {
+      await loadChampionSkins(champId);
+      ensureChromaButton();
+    }
+
+    // Check stability for auto-apply
+    checkAutoApply(champId);
+  } finally {
+    pollRunning = false;
   }
-
-  // Check for skin changes to reset auto-apply timer
-  checkSkinChange();
 }
 
 function startObserving() {
@@ -65,9 +72,6 @@ export function init(context) {
       setLastChampionId(champId);
       resetSkinsCache();
     }
-
-    // Feed session to auto-apply logic
-    handleSessionUpdate(session);
   });
 
   context.socket.observe('/lol-gameflow/v1/gameflow-phase', (event) => {
