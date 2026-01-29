@@ -160,9 +160,21 @@ func disableQuickEdit() {
 	setConsoleMode.Call(uintptr(handle), uintptr(mode))
 }
 
+func cleanup() {
+	fmt.Println("\n  Shutting down...")
+	server.HandleCleanup()
+	killPenguLoader()
+}
+
 func main() {
+	// Initialize console handle for tray functionality
+	initConsoleHandle()
+
 	// Disable QuickEdit mode so terminal doesn't pause on click
 	disableQuickEdit()
+
+	// Disable close button - users must use tray menu to quit
+	disableCloseButton()
 
 	// Check for admin privileges
 	if !isAdmin() {
@@ -179,10 +191,8 @@ func main() {
 
 	go func() {
 		<-sigChan
-		fmt.Println("\n  Shutting down...")
-		server.HandleCleanup()
-		killPenguLoader()
-		os.Exit(0)
+		cleanup()
+		quitTray()
 	}()
 
 	// Check if plugin reinstall is needed (after an update)
@@ -210,6 +220,26 @@ func main() {
 	// Save current version after successful setup
 	updater.SaveVersion(Version)
 
-	// Start WebSocket server (blocks)
-	server.StartServer(PORT)
+	// Start WebSocket server in background
+	go server.StartServer(PORT)
+
+	fmt.Println()
+	fmt.Println("  ╔════════════════════════════════════════════════════════════╗")
+	fmt.Println("  ║                                                            ║")
+	fmt.Println("  ║   !!! IMPORTANT: KEEP THIS WINDOW RUNNING !!!              ║")
+	fmt.Println("  ║                                                            ║")
+	fmt.Println("  ║   ame is now running in the system tray.                   ║")
+	fmt.Println("  ║   You can minimize this window, but DO NOT close it.       ║")
+	fmt.Println("  ║                                                            ║")
+	fmt.Println("  ║   To quit: Right-click the tray icon -> Quit               ║")
+	fmt.Println("  ║   To hide/show: Double-click the tray icon                 ║")
+	fmt.Println("  ║                                                            ║")
+	fmt.Println("  ╚════════════════════════════════════════════════════════════╝")
+	fmt.Println()
+
+	// Run system tray (blocks until quit)
+	runTray()
+
+	// Cleanup when tray exits
+	cleanup()
 }
