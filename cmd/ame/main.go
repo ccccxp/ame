@@ -117,18 +117,48 @@ func checkForUpdates() {
 
 			fmt.Println("  Restarting...")
 
-			// Use PowerShell directly with detached process flags
-			// This avoids batch file issues and survives parent exit
+			// Use PowerShell with rename-based atomic swap (more reliable than copy-overwrite)
+			// Pattern: rename old exe -> move new exe into place -> delete old -> launch
+			// This avoids file locking issues since rename works even if file is "in use"
 			psScript := fmt.Sprintf(
-				`Start-Sleep -Seconds 2; `+
-					`Copy-Item -Path '%s' -Destination '%s' -Force; `+
-					`Remove-Item -Path '%s' -Force; `+
-					`Start-Process -FilePath '%s' -Verb RunAs`,
-				updater.GetUpdateFilePath(), exePath, updater.GetUpdateFilePath(), exePath)
+				`$host.UI.RawUI.WindowTitle = 'ame updater'; `+
+					`Write-Host 'Updating ame...' -ForegroundColor Cyan; `+
+					`$ErrorActionPreference = 'Stop'; `+
+					`$updatePath = '%s'; `+
+					`$exePath = '%s'; `+
+					`$backupPath = $exePath + '.old'; `+
+					`$maxRetries = 15; `+
+					`$success = $false; `+
+					`Write-Host "Update file: $updatePath"; `+
+					`Write-Host "Target: $exePath"; `+
+					`Remove-Item -Path $backupPath -Force -ErrorAction SilentlyContinue; `+
+					`for ($i = 1; $i -le $maxRetries; $i++) { `+
+					`Write-Host "Attempt $i/$maxRetries..." -ForegroundColor Yellow; `+
+					`Start-Sleep -Seconds 2; `+
+					`try { `+
+					`Rename-Item -Path $exePath -NewName ($exePath + '.old') -Force; `+
+					`Move-Item -Path $updatePath -Destination $exePath -Force; `+
+					`$success = $true; `+
+					`Write-Host 'Update successful!' -ForegroundColor Green; `+
+					`break; `+
+					`} catch { `+
+					`Write-Host "  Error: $_" -ForegroundColor Red; `+
+					`} `+
+					`} `+
+					`if ($success) { `+
+					`Remove-Item -Path $backupPath -Force -ErrorAction SilentlyContinue; `+
+					`Write-Host 'Launching new version...' -ForegroundColor Cyan; `+
+					`Start-Process -FilePath $exePath -Verb RunAs; `+
+					`} else { `+
+					`if (Test-Path $backupPath) { Rename-Item -Path $backupPath -NewName $exePath -Force -ErrorAction SilentlyContinue }; `+
+					`Write-Host 'Update failed after 30s. Please close the app fully and try again.' -ForegroundColor Red; `+
+					`Read-Host 'Press Enter to exit'; `+
+					`}`,
+				updater.GetUpdateFilePath(), exePath)
 
-			cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psScript)
+			cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-NoExit", "-Command", psScript)
 			cmd.SysProcAttr = &syscall.SysProcAttr{
-				CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | 0x00000008, // DETACHED_PROCESS
+				CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP,
 			}
 			if err := cmd.Start(); err != nil {
 				fmt.Printf("  ! Failed to start updater: %v\n", err)
