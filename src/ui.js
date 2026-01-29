@@ -3,6 +3,7 @@ import { getMyChampionId, loadChampionSkins } from './api';
 import { readCurrentSkin, findSkinByName } from './skin';
 import { wsSend } from './websocket';
 import { setAppliedSkinName, getAppliedSkinName } from './chroma';
+import { clearAutoApplyTimer } from './autoApply';
 
 export function findSkinNameElement() {
   for (const selector of SKIN_SELECTORS) {
@@ -74,6 +75,7 @@ async function onApplyClick() {
   }
 
   console.log('[ame] Apply clicked:', skinName, '| Skin ID:', skin.id, '| Champion ID:', championId);
+  clearAutoApplyTimer();
   wsSend({ type: 'apply', championId, skinId: skin.id });
   setAppliedSkinName(skinName);
   setButtonState('Applied', true);

@@ -83,7 +83,7 @@ export function resetAutoApply() {
 /**
  * Clear the auto-apply timer
  */
-function clearAutoApplyTimer() {
+export function clearAutoApplyTimer() {
   if (autoApplyTimer) {
     clearTimeout(autoApplyTimer);
     autoApplyTimer = null;

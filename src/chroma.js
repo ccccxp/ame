@@ -11,6 +11,7 @@ import {
   isItemVisible
 } from './skin';
 import { getMyChampionId, getChampionSkins } from './api';
+import { clearAutoApplyTimer } from './autoApply';
 
 let activeChromaPanel = null;
 let activeChromaButton = null;
@@ -243,8 +244,9 @@ async function selectChroma(skinData, chroma) {
   const triggerButton = activeChromaButton;
 
   console.log('[ame] Chroma selected:', chroma.name, '| ID:', chroma.id, '| Base skin:', skinData.id);
+  clearAutoApplyTimer();
   wsSend({ type: 'apply', championId, skinId: chroma.id, baseSkinId: skinData.id });
-  appliedSkinName = chroma.name || skinData.name;
+  setAppliedSkinName(chroma.name || skinData.name);
   setButtonState('Applied', true);
   closeChromaPanel();
   document.removeEventListener('click', onClickOutsideChroma, true);
