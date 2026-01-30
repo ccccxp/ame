@@ -12,4 +12,7 @@ export const WS_RECONNECT_MAX_MS = 30000;
 export const BUTTON_ID = 'ame-apply-btn';
 export const CHROMA_BTN_CLASS = 'ame-chroma-button';
 export const CHROMA_PANEL_ID = 'ame-chroma-panel-container';
+export const IN_GAME_PHASES = ['InProgress', 'Reconnect'];
+export const IN_GAME_CONTAINER_ID = 'ame-ingame-container';
+export const IN_GAME_POLL_MS = 500;
 export const STYLE_ID = 'ame-styles';

@@ -36,6 +36,15 @@ type StatusMessage struct {
 	Message string `json:"message"`
 }
 
+// StateMessage represents the current overlay state sent in response to a query
+type StateMessage struct {
+	Type          string `json:"type"`
+	ChampionID    string `json:"championId,omitempty"`
+	SkinID        string `json:"skinId,omitempty"`
+	BaseSkinID    string `json:"baseSkinId,omitempty"`
+	OverlayActive bool   `json:"overlayActive"`
+}
+
 // IncomingMessage is used for parsing the message type first
 type IncomingMessage struct {
 	Type string `json:"type"`
@@ -66,6 +75,12 @@ func toString(v interface{}) string {
 
 var clients = make(map[*websocket.Conn]bool)
 var clientsMu sync.Mutex
+
+// Last applied skin state — survives client reconnects
+var lastChampionID string
+var lastSkinID string
+var lastBaseSkinID string
+var stateMu sync.Mutex
 
 // sendStatus sends a status message to the WebSocket client
 func sendStatus(conn *websocket.Conn, status, message string) {
@@ -148,6 +163,13 @@ func handleApply(conn *websocket.Conn, championID, skinID, baseSkinID string) {
 		return
 	}
 
+	// Track last applied state
+	stateMu.Lock()
+	lastChampionID = championID
+	lastSkinID = skinID
+	lastBaseSkinID = baseSkinID
+	stateMu.Unlock()
+
 	sendStatus(conn, "ready", "Skin applied!")
 }
 
@@ -165,6 +187,12 @@ func handlePrefetch(conn *websocket.Conn, championID, skinID, baseSkinID string)
 func HandleCleanup() {
 	modtools.KillModTools()
 	os.RemoveAll(config.OverlayDir)
+
+	stateMu.Lock()
+	lastChampionID = ""
+	lastSkinID = ""
+	lastBaseSkinID = ""
+	stateMu.Unlock()
 }
 
 // handleConnection handles a single WebSocket connection
@@ -213,6 +241,19 @@ func handleConnection(conn *websocket.Conn) {
 
 		case "cleanup":
 			HandleCleanup()
+
+		case "query":
+			stateMu.Lock()
+			state := StateMessage{
+				Type:          "state",
+				ChampionID:    lastChampionID,
+				SkinID:        lastSkinID,
+				BaseSkinID:    lastBaseSkinID,
+				OverlayActive: modtools.IsRunning() && lastSkinID != "",
+			}
+			stateMu.Unlock()
+			data, _ := json.Marshal(state)
+			conn.WriteMessage(websocket.TextMessage, data)
 		}
 	}
 }

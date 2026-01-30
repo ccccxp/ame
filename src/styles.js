@@ -1,4 +1,4 @@
-import { STYLE_ID, BUTTON_ID, CHROMA_BTN_CLASS, CHROMA_PANEL_ID } from './constants';
+import { STYLE_ID, BUTTON_ID, CHROMA_BTN_CLASS, CHROMA_PANEL_ID, IN_GAME_CONTAINER_ID } from './constants';
 
 export function injectStyles() {
   if (document.getElementById(STYLE_ID)) return;
@@ -95,6 +95,29 @@ export function injectStyles() {
       opacity: 1 !important;
       visibility: visible !important;
       pointer-events: auto !important;
+    }
+    #${IN_GAME_CONTAINER_ID} {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .ame-ingame-dropdown {
+      width: 180px;
+      height: 24px !important;
+      margin: 0 !important;
+    }
+    .ame-ingame-action {
+      font-size: 11px;
+      white-space: nowrap;
+      padding: 0 8px !important;
+      min-width: 0 !important;
+      height: 24px !important;
+      line-height: 24px !important;
+      margin: 0 !important;
     }
   `;
   document.head.appendChild(style);
