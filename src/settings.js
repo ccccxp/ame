@@ -187,6 +187,11 @@ function tryInject() {
 export function initSettings() {
   if (settingsObserver) return;
 
+  if (!document.body) {
+    setTimeout(initSettings, 250);
+    return;
+  }
+
   // Listen for settings button click — starts retry immediately
   document.addEventListener('click', (e) => {
     if (e.target.closest('.app-controls-settings')) {
