@@ -98,7 +98,7 @@ export function injectStyles() {
     }
     #${IN_GAME_CONTAINER_ID} {
       position: absolute;
-      top: 8px;
+      top: 36px;
       right: 8px;
       z-index: 100;
       display: flex;
@@ -120,6 +120,12 @@ export function injectStyles() {
       margin: 0 !important;
     }
     .ame-settings-panel {
+      height: 100%;
+    }
+    .ame-settings-panel > lol-uikit-scrollable {
+      height: 100%;
+    }
+    .ame-settings-panel-inner {
       padding: 10px 12px;
     }
     .ame-settings-row {
@@ -170,6 +176,141 @@ export function injectStyles() {
       filter: none !important;
       -webkit-filter: none !important;
       pointer-events: auto !important;
+    }
+    .ame-role-tabs {
+      display: flex;
+      gap: 4px;
+      margin-top: 12px;
+    }
+    .ame-role-tab {
+      width: 36px;
+      height: 36px;
+      padding: 4px;
+      cursor: pointer;
+      border: 2px solid transparent;
+      border-radius: 4px;
+      background: rgba(30, 35, 40, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .ame-role-tab:hover {
+      border-color: #5b5a56;
+      background: rgba(50, 55, 60, 0.8);
+    }
+    .ame-role-tab.active {
+      border-color: #c8aa6e;
+      background: rgba(60, 50, 30, 0.6);
+    }
+    .ame-role-tab img {
+      width: 24px;
+      height: 24px;
+      display: block;
+    }
+    .ame-role-content {
+      margin-top: 12px;
+    }
+    .ame-champion-list {
+      margin-top: 8px;
+    }
+    .ame-champion-entry {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 6px;
+      border-radius: 4px;
+      background: rgba(30, 35, 40, 0.4);
+      margin-bottom: 4px;
+    }
+    .ame-champion-entry:hover {
+      background: rgba(40, 45, 50, 0.6);
+    }
+    .ame-champion-entry .ame-champion-number {
+      font-size: 11px;
+      color: #5b5a56;
+      width: 16px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .ame-champion-entry img {
+      width: 24px;
+      height: 24px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+    .ame-champion-entry .ame-champion-name {
+      flex: 1;
+      font-size: 12px;
+      color: #a09b8c;
+    }
+    .ame-champion-entry .ame-champion-remove {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+      border: none;
+      background: none;
+      color: #5b5a56;
+      font-size: 14px;
+      line-height: 18px;
+      text-align: center;
+      padding: 0;
+      flex-shrink: 0;
+      border-radius: 2px;
+    }
+    .ame-champion-entry .ame-champion-remove:hover {
+      color: #e25151;
+      background: rgba(226, 81, 81, 0.15);
+    }
+    .ame-add-champion {
+      margin-top: 6px;
+      position: relative;
+    }
+    .ame-add-champion lol-uikit-flat-input {
+      width: 100%;
+    }
+    .ame-search-dropdown {
+      position: absolute;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      background: #1e2328;
+      border: 1px solid #5b5a56;
+      border-radius: 4px;
+      margin-top: 2px;
+    }
+    .ame-search-results {
+      max-height: 180px;
+    }
+    .ame-search-results > * {
+      flex-shrink: 0;
+    }
+    .ame-search-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 8px;
+      cursor: pointer;
+      font-size: 12px;
+      color: #a09b8c;
+    }
+    .ame-search-item:hover {
+      background: rgba(200, 170, 110, 0.15);
+      color: #f0e6d2;
+    }
+    .ame-search-item img {
+      width: 20px;
+      height: 20px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+    .ame-list-label {
+      font-family: var(--font-body);
+      font-size: 12px;
+      color: #a09b8c;
+      margin-top: 14px;
+      margin-bottom: 2px;
+      display: block;
     }
     #${SWIFTPLAY_BUTTON_ID}[disabled] {
       opacity: 0.4 !important;

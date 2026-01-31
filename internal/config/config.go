@@ -25,13 +25,21 @@ var (
 	settings Settings
 )
 
+// RoleConfig holds the pick/ban champion priority lists for a single role.
+type RoleConfig struct {
+	Picks []int `json:"picks"`
+	Bans  []int `json:"bans"`
+}
+
 // Settings holds persisted application settings.
 type Settings struct {
-	GamePath         string `json:"gamePath"`
-	AutoAccept       bool   `json:"autoAccept"`
-	BenchSwap        bool   `json:"benchSwap"`
-	StartWithWindows bool   `json:"startWithWindows"`
-	AutoUpdate       bool   `json:"autoUpdate"`
+	GamePath         string                `json:"gamePath"`
+	AutoAccept       bool                  `json:"autoAccept"`
+	BenchSwap        bool                  `json:"benchSwap"`
+	StartWithWindows bool                  `json:"startWithWindows"`
+	AutoUpdate       bool                  `json:"autoUpdate"`
+	AutoSelect       bool                  `json:"autoSelect"`
+	AutoSelectRoles  map[string]RoleConfig `json:"autoSelectRoles"`
 }
 
 // Init loads settings from disk.
@@ -47,6 +55,7 @@ func Init() error {
 	data, err := os.ReadFile(settingsPath)
 	if err == nil {
 		if err := json.Unmarshal(data, &settings); err == nil {
+			ensureAutoSelectRoles()
 			return nil
 		}
 	}
@@ -66,7 +75,14 @@ func Init() error {
 
 	// Neither file exists — start with defaults
 	settings.AutoUpdate = true
+	ensureAutoSelectRoles()
 	return nil
+}
+
+func ensureAutoSelectRoles() {
+	if settings.AutoSelectRoles == nil {
+		settings.AutoSelectRoles = make(map[string]RoleConfig)
+	}
 }
 
 // Get returns a copy of the current settings.
@@ -148,6 +164,45 @@ func SetAutoUpdate(enabled bool) error {
 	mu.Lock()
 	defer mu.Unlock()
 	settings.AutoUpdate = enabled
+	return save()
+}
+
+// AutoSelect returns the current auto-select setting.
+func AutoSelect() bool {
+	mu.RLock()
+	defer mu.RUnlock()
+	return settings.AutoSelect
+}
+
+// SetAutoSelect updates and persists the auto-select setting.
+func SetAutoSelect(enabled bool) error {
+	mu.Lock()
+	defer mu.Unlock()
+	settings.AutoSelect = enabled
+	return save()
+}
+
+// AutoSelectRoles returns a copy of the auto-select role configurations.
+func AutoSelectRoles() map[string]RoleConfig {
+	mu.RLock()
+	defer mu.RUnlock()
+	cp := make(map[string]RoleConfig, len(settings.AutoSelectRoles))
+	for k, v := range settings.AutoSelectRoles {
+		picks := make([]int, len(v.Picks))
+		copy(picks, v.Picks)
+		bans := make([]int, len(v.Bans))
+		copy(bans, v.Bans)
+		cp[k] = RoleConfig{Picks: picks, Bans: bans}
+	}
+	return cp
+}
+
+// SetAutoSelectRole updates and persists the pick/ban config for a single role.
+func SetAutoSelectRole(role string, picks, bans []int) error {
+	mu.Lock()
+	defer mu.Unlock()
+	ensureAutoSelectRoles()
+	settings.AutoSelectRoles[role] = RoleConfig{Picks: picks, Bans: bans}
 	return save()
 }
 

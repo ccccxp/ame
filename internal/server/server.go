@@ -58,6 +58,14 @@ type BoolSettingMessage struct {
 	Enabled bool   `json:"enabled"`
 }
 
+// AutoSelectRoleMessage represents a per-role auto-select config update
+type AutoSelectRoleMessage struct {
+	Type  string `json:"type"`
+	Role  string `json:"role"`
+	Picks []int  `json:"picks"`
+	Bans  []int  `json:"bans"`
+}
+
 // IncomingMessage is used for parsing the message type first
 type IncomingMessage struct {
 	Type string `json:"type"`
@@ -279,12 +287,15 @@ func handleConnection(conn *websocket.Conn) {
 
 		case "getSettings":
 			s := config.Get()
+			roles := config.AutoSelectRoles()
 			resp := map[string]interface{}{
 				"type":             "settings",
 				"autoAccept":       s.AutoAccept,
 				"benchSwap":        s.BenchSwap,
 				"startWithWindows": s.StartWithWindows,
 				"autoUpdate":       s.AutoUpdate,
+				"autoSelect":       s.AutoSelect,
+				"autoSelectRoles":  roles,
 			}
 			data, _ := json.Marshal(resp)
 			conn.WriteMessage(websocket.TextMessage, data)
@@ -345,6 +356,38 @@ func handleConnection(conn *websocket.Conn) {
 				sendStatus(conn, "error", "Failed to save auto-update setting")
 			} else {
 				resp := BoolSettingMessage{Type: "autoUpdate", Enabled: msg.Enabled}
+				data, _ := json.Marshal(resp)
+				conn.WriteMessage(websocket.TextMessage, data)
+			}
+
+		case "setAutoSelect":
+			var msg BoolSettingMessage
+			if err := json.Unmarshal(message, &msg); err != nil {
+				continue
+			}
+			if err := config.SetAutoSelect(msg.Enabled); err != nil {
+				sendStatus(conn, "error", "Failed to save auto-select setting")
+			} else {
+				resp := BoolSettingMessage{Type: "autoSelect", Enabled: msg.Enabled}
+				data, _ := json.Marshal(resp)
+				conn.WriteMessage(websocket.TextMessage, data)
+			}
+
+		case "setAutoSelectRole":
+			var msg AutoSelectRoleMessage
+			if err := json.Unmarshal(message, &msg); err != nil {
+				continue
+			}
+			if msg.Picks == nil {
+				msg.Picks = []int{}
+			}
+			if msg.Bans == nil {
+				msg.Bans = []int{}
+			}
+			if err := config.SetAutoSelectRole(msg.Role, msg.Picks, msg.Bans); err != nil {
+				sendStatus(conn, "error", "Failed to save auto-select role config")
+			} else {
+				resp := AutoSelectRoleMessage{Type: "autoSelectRole", Role: msg.Role, Picks: msg.Picks, Bans: msg.Bans}
 				data, _ := json.Marshal(resp)
 				conn.WriteMessage(websocket.TextMessage, data)
 			}

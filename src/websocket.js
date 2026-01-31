@@ -20,6 +20,10 @@ let gamePathCallback = null;
 const settingsCache = {};
 const settingsListeners = {};
 
+// Auto-select roles: separate cache for complex (non-boolean) config
+let autoSelectRolesCache = {};
+const autoSelectRolesListeners = [];
+
 /**
  * Register a listener for a boolean setting.
  * Fires immediately with cached value (if available) and on every update.
@@ -52,6 +56,34 @@ function applySetting(key, value) {
   if (settingsListeners[key]) {
     settingsListeners[key].forEach(cb => cb(v));
   }
+}
+
+/**
+ * Register a listener for auto-select role config changes.
+ * Fires immediately with cached value and on every update.
+ * Returns an unsubscribe function.
+ */
+export function onAutoSelectRoles(cb) {
+  autoSelectRolesListeners.push(cb);
+  cb(autoSelectRolesCache);
+  return () => {
+    const idx = autoSelectRolesListeners.indexOf(cb);
+    if (idx !== -1) autoSelectRolesListeners.splice(idx, 1);
+  };
+}
+
+export function getAutoSelectRolesCache() {
+  return autoSelectRolesCache;
+}
+
+function applyAutoSelectRoles(roles) {
+  autoSelectRolesCache = roles || {};
+  autoSelectRolesListeners.forEach(cb => cb(autoSelectRolesCache));
+}
+
+function applyAutoSelectRole(role, picks, bans) {
+  autoSelectRolesCache = { ...autoSelectRolesCache, [role]: { picks: picks || [], bans: bans || [] } };
+  autoSelectRolesListeners.forEach(cb => cb(autoSelectRolesCache));
 }
 
 export function wsConnect() {
@@ -88,6 +120,9 @@ export function wsConnect() {
           for (const key of Object.keys(settingsListeners)) {
             if (key in msg) applySetting(key, msg[key]);
           }
+          if (msg.autoSelectRoles) applyAutoSelectRoles(msg.autoSelectRoles);
+        } else if (msg.type === 'autoSelectRole') {
+          applyAutoSelectRole(msg.role, msg.picks, msg.bans);
         } else if (settingsListeners[msg.type] && 'enabled' in msg) {
           // Individual setting response (from set* calls)
           applySetting(msg.type, msg.enabled);

@@ -1,6 +1,8 @@
-import { wsSend, onGamePath, onSetting, refreshSettings } from './websocket';
+import { wsSend, onGamePath, onSetting, refreshSettings, getAutoSelectRolesCache, onAutoSelectRoles } from './websocket';
 import { el } from './dom';
 import { createButton, createCheckbox, createInput } from './components';
+import { loadChampionSummary } from './api';
+import { AUTO_SELECT_ROLES } from './constants';
 
 const NAV_TITLE_CLASS = 'lol-settings-nav-title';
 const AME_NAV_NAME = 'ame-settings';
@@ -35,35 +37,210 @@ function buildToggle(id, labelText, settingKey) {
   return el('div', { class: 'ame-settings-toggle-row' }, checkbox);
 }
 
+let championSummary = null;
+let activeRole = 'top';
+
+function getChampionName(id) {
+  if (!championSummary) return `Champion ${id}`;
+  const champ = championSummary.find(c => c.id === id);
+  return champ ? champ.name : `Champion ${id}`;
+}
+
+function getChampionIcon(id) {
+  return `/lol-game-data/assets/v1/champion-icons/${id}.png`;
+}
+
+function sendRoleUpdate(role) {
+  const config = getAutoSelectRolesCache();
+  const roleConfig = config[role] || { picks: [], bans: [] };
+  wsSend({ type: 'setAutoSelectRole', role, picks: roleConfig.picks, bans: roleConfig.bans });
+}
+
+function buildChampionEntry(id, index, listType) {
+  const removeBtn = el('button', {
+    class: 'ame-champion-remove',
+    onClick: () => {
+      const config = getAutoSelectRolesCache();
+      const roleConfig = config[activeRole] || { picks: [], bans: [] };
+      const list = [...(roleConfig[listType] || [])];
+      list.splice(list.indexOf(id), 1);
+      config[activeRole] = { ...roleConfig, [listType]: list };
+      sendRoleUpdate(activeRole);
+      renderRoleContent();
+    },
+  }, '\u00d7');
+
+  return el('div', { class: 'ame-champion-entry' },
+    el('span', { class: 'ame-champion-number' }, `${index + 1}.`),
+    el('img', { src: getChampionIcon(id) }),
+    el('span', { class: 'ame-champion-name' }, getChampionName(id)),
+    removeBtn,
+  );
+}
+
+function buildChampionPicker(listType) {
+  const { container: flatInput, input } = createInput({ placeholder: 'Search champion...' });
+  const resultsList = el('lol-uikit-scrollable', {
+    class: 'ame-search-results',
+    'overflow-masks': 'enabled',
+  });
+  const resultsContainer = el('div', { class: 'ame-search-dropdown' }, resultsList);
+  resultsContainer.style.display = 'none';
+
+  function getAvailable() {
+    const config = getAutoSelectRolesCache();
+    const roleConfig = config[activeRole] || { picks: [], bans: [] };
+    const existing = new Set([...(roleConfig.picks || []), ...(roleConfig.bans || [])]);
+    return (championSummary || [])
+      .filter(c => c.id > 0 && !existing.has(c.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  function showResults(filter) {
+    const available = getAvailable();
+    const query = (filter || '').toLowerCase();
+    const filtered = query ? available.filter(c => c.name.toLowerCase().includes(query)) : available;
+
+    resultsList.innerHTML = '';
+    if (filtered.length === 0) {
+      resultsContainer.style.display = 'none';
+      return;
+    }
+
+    for (const champ of filtered) {
+      const item = el('div', {
+        class: 'ame-search-item',
+        onClick: () => {
+          const cfg = getAutoSelectRolesCache();
+          const rc = cfg[activeRole] || { picks: [], bans: [] };
+          const list = [...(rc[listType] || []), champ.id];
+          cfg[activeRole] = { ...rc, [listType]: list };
+          sendRoleUpdate(activeRole);
+          input.value = '';
+          resultsContainer.style.display = 'none';
+          renderRoleContent();
+        },
+      },
+        el('img', { src: getChampionIcon(champ.id) }),
+        el('span', null, champ.name),
+      );
+      resultsList.appendChild(item);
+    }
+    resultsContainer.style.display = '';
+  }
+
+  input.addEventListener('input', () => showResults(input.value));
+  input.addEventListener('focus', () => showResults(input.value));
+  input.addEventListener('blur', () => {
+    // Delay to allow click on results
+    setTimeout(() => { resultsContainer.style.display = 'none'; }, 200);
+  });
+
+  return el('div', { class: 'ame-add-champion' }, flatInput, resultsContainer);
+}
+
+function buildChampionList(listType, label) {
+  const config = getAutoSelectRolesCache();
+  const roleConfig = config[activeRole] || { picks: [], bans: [] };
+  const list = roleConfig[listType] || [];
+
+  const entries = list.map((id, i) => buildChampionEntry(id, i, listType));
+
+  return el('div', null,
+    el('span', { class: 'ame-list-label' }, label),
+    el('div', { class: 'ame-champion-list' }, ...entries),
+    buildChampionPicker(listType),
+  );
+}
+
+let roleContentEl = null;
+
+function renderRoleContent() {
+  if (!roleContentEl) return;
+  roleContentEl.innerHTML = '';
+  roleContentEl.appendChild(buildChampionList('picks', 'Pick priority:'));
+  roleContentEl.appendChild(buildChampionList('bans', 'Ban priority:'));
+}
+
+function buildRoleTabs() {
+  const tabs = AUTO_SELECT_ROLES.map(role => {
+    const tab = el('div', {
+      class: `ame-role-tab${role.key === activeRole ? ' active' : ''}`,
+      onClick: () => {
+        activeRole = role.key;
+        tabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        renderRoleContent();
+      },
+    }, el('img', { src: role.icon, alt: role.label }));
+    return tab;
+  });
+
+  return el('div', { class: 'ame-role-tabs' }, ...tabs);
+}
+
+function buildAutoSelectSection() {
+  roleContentEl = el('div', { class: 'ame-role-content' });
+
+  const section = el('div', null,
+    el('div', { class: 'lol-settings-ingame-section-title ame-settings-section-gap' }, 'Auto Champion Select'),
+    buildToggle('ameAutoSelect', 'Enable auto champion select', 'autoSelect'),
+    buildRoleTabs(),
+    roleContentEl,
+  );
+
+  // Load champion data then render the role content
+  loadChampionSummary().then(data => {
+    championSummary = data;
+    renderRoleContent();
+  });
+
+  // Re-render when roles config arrives/updates from server
+  onAutoSelectRoles(() => {
+    if (championSummary) renderRoleContent();
+  });
+
+  return section;
+}
+
 function buildPanel() {
   const { container: flatInput, input } = createInput({
     placeholder: 'C:\\Riot Games\\League of Legends\\Game',
   });
 
   return el('div', { class: AME_PANEL_CLASS },
-    el('div', { class: 'lol-settings-ingame-section-title' }, 'Game Path'),
-    el('div', { class: 'ame-settings-row' },
-      flatInput,
-      createButton('Save', {
-        class: 'ame-settings-save',
-        onClick: () => {
-          const path = input.value.trim();
-          if (!path) return;
-          wsSend({ type: 'setGamePath', path });
-        },
-      })
+    el('lol-uikit-scrollable', {
+      'overflow-masks': 'enabled',
+      'scrolled-bottom': 'false',
+      'scrolled-top': 'true',
+    },
+      el('div', { class: 'ame-settings-panel-inner' },
+        el('div', { class: 'lol-settings-ingame-section-title' }, 'Game Path'),
+        el('div', { class: 'ame-settings-row' },
+          flatInput,
+          createButton('Save', {
+            class: 'ame-settings-save',
+            onClick: () => {
+              const path = input.value.trim();
+              if (!path) return;
+              wsSend({ type: 'setGamePath', path });
+            },
+          })
+        ),
+        el('div', { class: 'lol-settings-ingame-section-title ame-settings-section-gap' }, 'Auto Accept Match'),
+        buildToggle('ameAutoAccept', 'Automatically accept match when found', 'autoAccept'),
+        el('div', { class: 'lol-settings-ingame-section-title ame-settings-section-gap' }, 'ARAM Bench Swap'),
+        el('label', { class: 'ame-settings-description' },
+          'Click a champion on the bench while it\'s on cooldown to mark it. When the cooldown ends, it will automatically be swapped to you.'
+        ),
+        buildToggle('ameBenchSwap', 'Enable auto bench swap in ARAM', 'benchSwap'),
+        el('div', { class: 'lol-settings-ingame-section-title ame-settings-section-gap' }, 'Startup'),
+        buildToggle('ameStartWithWindows', 'Start ame with Windows', 'startWithWindows'),
+        el('div', { class: 'lol-settings-ingame-section-title ame-settings-section-gap' }, 'Updates'),
+        buildToggle('ameAutoUpdate', 'Automatically install updates', 'autoUpdate'),
+        buildAutoSelectSection(),
+      ),
     ),
-    el('div', { class: 'lol-settings-ingame-section-title ame-settings-section-gap' }, 'Auto Accept Match'),
-    buildToggle('ameAutoAccept', 'Automatically accept match when found', 'autoAccept'),
-    el('div', { class: 'lol-settings-ingame-section-title ame-settings-section-gap' }, 'ARAM Bench Swap'),
-    el('label', { class: 'ame-settings-description' },
-      'Click a champion on the bench while it\'s on cooldown to mark it. When the cooldown ends, it will automatically be swapped to you.'
-    ),
-    buildToggle('ameBenchSwap', 'Enable auto bench swap in ARAM', 'benchSwap'),
-    el('div', { class: 'lol-settings-ingame-section-title ame-settings-section-gap' }, 'Startup'),
-    buildToggle('ameStartWithWindows', 'Start ame with Windows', 'startWithWindows'),
-    el('div', { class: 'lol-settings-ingame-section-title ame-settings-section-gap' }, 'Updates'),
-    buildToggle('ameAutoUpdate', 'Automatically install updates', 'autoUpdate')
   );
 }
 

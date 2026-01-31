@@ -10,6 +10,7 @@ import { ensureInGameUI, removeInGameUI, updateInGameStatus } from './inGame';
 import { initSettings } from './settings';
 import { handleReadyCheck, cancelPendingAccept, loadAutoAcceptSetting } from './autoAcceptMatch';
 import { ensureBenchSwap, cleanupBenchSwap, loadBenchSwapSetting } from './benchSwap';
+import { loadAutoSelectSetting, handleChampSelectSession, resetAutoSelect } from './autoSelect';
 import { setLastChampionId, setAppliedSkinName } from './state';
 
 let pollTimer = null;
@@ -109,10 +110,12 @@ export function init(context) {
   initSettings();
   loadAutoAcceptSetting();
   loadBenchSwapSetting();
+  loadAutoSelectSetting();
 
   context.socket.observe('/lol-champ-select/v1/session', (event) => {
     if (event.eventType === 'Delete' || !inChampSelect) return;
     const session = event.data;
+    handleChampSelectSession(session);
     const me = session.myTeam?.find(p => p.cellId === session.localPlayerCellId);
     const champId = me?.championId || null;
     if (champId && champId !== lastChampionId) {
@@ -145,6 +148,7 @@ export function init(context) {
       injectionTriggered = false;
       setAppliedSkinName(null);
       resetAutoApply();
+      resetAutoSelect();
       stopSwiftplayObserving();
       startObserving();
       fetchAndLogGameflow();
@@ -152,6 +156,7 @@ export function init(context) {
     } else if (!inChampSelect && wasInChampSelect) {
       stopObserving();
       forceApplyIfNeeded().then(() => resetAutoApply());
+      resetAutoSelect();
       injectionTriggered = true;
     }
 
