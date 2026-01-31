@@ -51,14 +51,8 @@ type GamePathMessage struct {
 	Path string `json:"path"`
 }
 
-// AutoAcceptMessage represents an auto-accept setting request/response
-type AutoAcceptMessage struct {
-	Type    string `json:"type"`
-	Enabled bool   `json:"enabled"`
-}
-
-// BenchSwapMessage represents a bench-swap setting request/response
-type BenchSwapMessage struct {
+// BoolSettingMessage is a generic message for boolean setting get/set
+type BoolSettingMessage struct {
 	Type    string `json:"type"`
 	Enabled bool   `json:"enabled"`
 }
@@ -282,38 +276,38 @@ func handleConnection(conn *websocket.Conn) {
 				conn.WriteMessage(websocket.TextMessage, data)
 			}
 
-		case "getAutoAccept":
-			resp := AutoAcceptMessage{Type: "autoAccept", Enabled: config.AutoAccept()}
+		case "getSettings":
+			s := config.Get()
+			resp := map[string]interface{}{
+				"type":       "settings",
+				"autoAccept": s.AutoAccept,
+				"benchSwap":  s.BenchSwap,
+			}
 			data, _ := json.Marshal(resp)
 			conn.WriteMessage(websocket.TextMessage, data)
 
 		case "setAutoAccept":
-			var msg AutoAcceptMessage
+			var msg BoolSettingMessage
 			if err := json.Unmarshal(message, &msg); err != nil {
 				continue
 			}
 			if err := config.SetAutoAccept(msg.Enabled); err != nil {
 				sendStatus(conn, "error", "Failed to save auto-accept setting")
 			} else {
-				resp := AutoAcceptMessage{Type: "autoAccept", Enabled: msg.Enabled}
+				resp := BoolSettingMessage{Type: "autoAccept", Enabled: msg.Enabled}
 				data, _ := json.Marshal(resp)
 				conn.WriteMessage(websocket.TextMessage, data)
 			}
 
-		case "getBenchSwap":
-			resp := BenchSwapMessage{Type: "benchSwap", Enabled: config.BenchSwap()}
-			data, _ := json.Marshal(resp)
-			conn.WriteMessage(websocket.TextMessage, data)
-
 		case "setBenchSwap":
-			var msg BenchSwapMessage
+			var msg BoolSettingMessage
 			if err := json.Unmarshal(message, &msg); err != nil {
 				continue
 			}
 			if err := config.SetBenchSwap(msg.Enabled); err != nil {
 				sendStatus(conn, "error", "Failed to save bench swap setting")
 			} else {
-				resp := BenchSwapMessage{Type: "benchSwap", Enabled: msg.Enabled}
+				resp := BoolSettingMessage{Type: "benchSwap", Enabled: msg.Enabled}
 				data, _ := json.Marshal(resp)
 				conn.WriteMessage(websocket.TextMessage, data)
 			}
