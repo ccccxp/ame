@@ -1,50 +1,29 @@
 import { AUTO_ACCEPT_DELAY_MS } from './constants';
-import { wsSend, onAutoAccept } from './websocket';
+import { onSetting } from './websocket';
 
 let enabled = false;
 let pendingTimer = null;
 
-export function setAutoAcceptEnabled(v) {
-  enabled = v;
-}
-
 export function loadAutoAcceptSetting() {
-  onAutoAccept((v) => { enabled = v; });
-  wsSend({ type: 'getAutoAccept' });
+  onSetting('autoAccept', (v) => { enabled = v; });
 }
 
 export function handleReadyCheck() {
   if (!enabled) return;
   if (pendingTimer) return;
 
-  console.log('[ame] ReadyCheck detected, will auto-accept in', AUTO_ACCEPT_DELAY_MS, 'ms');
-
   pendingTimer = setTimeout(async () => {
     pendingTimer = null;
     try {
-      // Check current ready-check state to respect manual decline
       const res = await fetch('/lol-matchmaking/v1/ready-check');
-      if (!res.ok) {
-        console.log('[ame] Ready check endpoint returned', res.status);
-        return;
-      }
-      const data = await res.json();
-      const response = data.playerResponse;
+      if (!res.ok) return;
 
-      if (response === 'Declined') {
-        console.log('[ame] User declined — skipping auto-accept');
-        return;
-      }
-      if (response === 'Accepted') {
-        console.log('[ame] Already accepted');
-        return;
-      }
+      const { playerResponse } = await res.json();
+      if (playerResponse === 'Declined' || playerResponse === 'Accepted') return;
 
-      // playerResponse is "None" — accept
       await fetch('/lol-matchmaking/v1/ready-check/accept', { method: 'POST' });
-      console.log('[ame] Auto-accepted match');
-    } catch (err) {
-      console.log('[ame] Auto-accept error:', err);
+    } catch {
+      // Ready check may have expired
     }
   }, AUTO_ACCEPT_DELAY_MS);
 }

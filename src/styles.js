@@ -139,13 +139,28 @@ export function injectStyles() {
       display: flex;
       align-items: center;
     }
+    .ame-settings-description {
+      font-family: var(--font-body);
+      font-size: 12px;
+      color: #a09b8c;
+      margin-top: 4px;
+      line-height: 1.4;
+      display: block;
+    }
+    .ame-bench-mark {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #c89b3c;
+      box-shadow: 0 0 4px #c89b3c;
+      z-index: 99999;
+      pointer-events: none;
+    }
   `;
   document.head.appendChild(style);
-}
-
-export function removeStyles() {
-  const style = document.getElementById(STYLE_ID);
-  if (style) style.remove();
 }
 
 export function unlockSkinCarousel() {

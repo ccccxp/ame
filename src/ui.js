@@ -1,19 +1,9 @@
-import { BUTTON_ID, SKIN_SELECTORS } from './constants';
+import { BUTTON_ID } from './constants';
 import { getMyChampionId, loadChampionSkins } from './api';
 import { readCurrentSkin, findSkinByName, isDefaultSkin } from './skin';
 import { wsSendApply } from './websocket';
-import { setAppliedSkinName, getAppliedSkinName } from './chroma';
-import { getSelectedChroma } from './autoApply';
-
-export function findSkinNameElement() {
-  for (const selector of SKIN_SELECTORS) {
-    const nodes = document.querySelectorAll(selector);
-    for (const node of nodes) {
-      if (node.textContent.trim() && node.offsetParent !== null) return node;
-    }
-  }
-  return null;
-}
+import { toastError } from './toast';
+import { getAppliedSkinName, setAppliedSkinName, getSelectedChroma } from './state';
 
 export function ensureApplyButton() {
   if (document.getElementById(BUTTON_ID)) return;
@@ -58,31 +48,28 @@ async function onApplyClick() {
 
   const championId = await getMyChampionId();
   if (!championId) {
-    if (typeof Toast !== 'undefined') Toast.error('Pick a champion first');
+    toastError('Pick a champion first');
     return;
   }
 
   const skins = await loadChampionSkins(championId);
   if (!skins) {
-    if (typeof Toast !== 'undefined') Toast.error('Could not load skin data');
+    toastError('Could not load skin data');
     return;
   }
 
   const skin = findSkinByName(skins, skinName);
   if (!skin) {
-    if (typeof Toast !== 'undefined') Toast.error('Skin not found in game data');
+    toastError('Skin not found in game data');
     return;
   }
 
   if (isDefaultSkin(skin)) return;
 
-  // Apply with chroma if one is selected, otherwise base skin
   const chroma = getSelectedChroma();
   if (chroma) {
-    console.log('[ame] Apply clicked (chroma):', skinName, '| Chroma ID:', chroma.id, '| Base:', chroma.baseSkinId, '| Champion ID:', championId);
     wsSendApply({ type: 'apply', championId, skinId: chroma.id, baseSkinId: chroma.baseSkinId });
   } else {
-    console.log('[ame] Apply clicked:', skinName, '| Skin ID:', skin.id, '| Champion ID:', championId);
     wsSendApply({ type: 'apply', championId, skinId: skin.id });
   }
   setAppliedSkinName(skinName);

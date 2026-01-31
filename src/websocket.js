@@ -1,4 +1,5 @@
 import { WS_URL, WS_RECONNECT_BASE_MS, WS_RECONNECT_MAX_MS } from './constants';
+import { toastError, toastPromise } from './toast';
 
 let ws = null;
 let wsReconnectDelay = WS_RECONNECT_BASE_MS;
@@ -15,11 +16,43 @@ let overlayActive = false;
 // One-shot callback for gamePath response
 let gamePathCallback = null;
 
-// One-shot callback for autoAccept response
-let autoAcceptCallback = null;
+// Settings: local cache + pub/sub listeners keyed by setting name
+const settingsCache = {};
+const settingsListeners = {};
 
-// One-shot callback for benchSwap response
-let benchSwapCallback = null;
+/**
+ * Register a listener for a boolean setting.
+ * Fires immediately with cached value (if available) and on every update.
+ * Returns an unsubscribe function.
+ */
+export function onSetting(key, cb) {
+  if (!settingsListeners[key]) settingsListeners[key] = [];
+  settingsListeners[key].push(cb);
+
+  // Fire immediately with cached value if we have one
+  if (key in settingsCache) cb(settingsCache[key]);
+
+  return () => {
+    const arr = settingsListeners[key];
+    if (arr) {
+      const idx = arr.indexOf(cb);
+      if (idx !== -1) arr.splice(idx, 1);
+    }
+  };
+}
+
+/** Re-fetch all settings from server. */
+export function refreshSettings() {
+  wsSend({ type: 'getSettings' });
+}
+
+function applySetting(key, value) {
+  const v = !!value;
+  settingsCache[key] = v;
+  if (settingsListeners[key]) {
+    settingsListeners[key].forEach(cb => cb(v));
+  }
+}
 
 export function wsConnect() {
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
@@ -30,14 +63,12 @@ export function wsConnect() {
       wsReconnectDelay = WS_RECONNECT_BASE_MS;
       // Hydrate all state from server on connect/reconnect
       ws.send(JSON.stringify({ type: 'query' }));
-      ws.send(JSON.stringify({ type: 'getAutoAccept' }));
-      ws.send(JSON.stringify({ type: 'getBenchSwap' }));
+      ws.send(JSON.stringify({ type: 'getSettings' }));
     };
     ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data);
         if (msg.type === 'state') {
-          // Hydrate state from server (on connect/reconnect)
           if (msg.championId && msg.skinId) {
             lastApplyPayload = {
               championId: Number(msg.championId),
@@ -52,14 +83,14 @@ export function wsConnect() {
             gamePathCallback(msg.path || '');
             gamePathCallback = null;
           }
-        } else if (msg.type === 'autoAccept') {
-          if (autoAcceptCallback) {
-            autoAcceptCallback(!!msg.enabled);
+        } else if (msg.type === 'settings') {
+          // Batch settings snapshot — update all registered keys
+          for (const key of Object.keys(settingsListeners)) {
+            if (key in msg) applySetting(key, msg[key]);
           }
-        } else if (msg.type === 'benchSwap') {
-          if (benchSwapCallback) {
-            benchSwapCallback(!!msg.enabled);
-          }
+        } else if (settingsListeners[msg.type] && 'enabled' in msg) {
+          // Individual setting response (from set* calls)
+          applySetting(msg.type, msg.enabled);
         } else if (msg.type === 'status') {
           if (msg.status === 'ready' && applyResolve) {
             applyResolve();
@@ -70,8 +101,8 @@ export function wsConnect() {
               applyReject(new Error(msg.message));
               applyResolve = null;
               applyReject = null;
-            } else if (typeof Toast !== 'undefined') {
-              Toast.error(msg.message);
+            } else {
+              toastError(msg.message);
             }
           }
         }
@@ -99,8 +130,6 @@ export function getLastApplyPayload() { return lastApplyPayload; }
 export function isOverlayActive() { return overlayActive; }
 export function setOverlayActive(v) { overlayActive = v; }
 export function onGamePath(cb) { gamePathCallback = cb; }
-export function onAutoAccept(cb) { autoAcceptCallback = cb; }
-export function onBenchSwap(cb) { benchSwapCallback = cb; }
 
 export function wsSend(obj) {
   if (ws && ws.readyState === WebSocket.OPEN) {
@@ -117,7 +146,6 @@ export function wsSend(obj) {
  */
 export function wsSendApply(obj) {
   if (applyResolve) {
-    // Already an apply in-flight — don't send another
     return;
   }
 
@@ -130,13 +158,11 @@ export function wsSendApply(obj) {
 
   promise.then(() => { overlayActive = true; });
 
-  if (typeof Toast !== 'undefined') {
-    Toast.promise(promise, {
-      loading: 'Applying skin...',
-      success: 'Skin applied!',
-      error: 'Failed to apply skin',
-    });
-  }
+  toastPromise(promise, {
+    loading: 'Applying skin...',
+    success: 'Skin applied!',
+    error: 'Failed to apply skin',
+  });
 
   wsSend(obj);
 }

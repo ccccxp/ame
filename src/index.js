@@ -1,14 +1,15 @@
 import { CHAMP_SELECT_PHASES, POST_GAME_PHASES, IN_GAME_PHASES, IN_GAME_POLL_MS, POLL_INTERVAL_MS, CHROMA_BTN_CLASS } from './constants';
 import { getMyChampionId, loadChampionSkins, resetSkinsCache } from './api';
-import { injectStyles, removeStyles, unlockSkinCarousel } from './styles';
+import { injectStyles, unlockSkinCarousel } from './styles';
 import { wsConnect, wsSend, isOverlayActive } from './websocket';
 import { ensureApplyButton, removeApplyButton, updateButtonState } from './ui';
-import { ensureChromaButton, closeChromaPanel, setLastChampionId, setAppliedSkinName } from './chroma';
+import { ensureChromaButton, closeChromaPanel } from './chroma';
 import { resetAutoApply, forceApplyIfNeeded, fetchAndLogGameflow, fetchAndLogTimer, checkAutoApply } from './autoApply';
 import { ensureInGameUI, removeInGameUI, updateInGameStatus } from './inGame';
 import { initSettings } from './settings';
 import { handleReadyCheck, cancelPendingAccept, loadAutoAcceptSetting } from './autoAcceptMatch';
 import { ensureBenchSwap, cleanupBenchSwap, loadBenchSwapSetting } from './benchSwap';
+import { setLastChampionId, setAppliedSkinName } from './state';
 
 let pollTimer = null;
 let observer = null;
@@ -26,7 +27,6 @@ function stopObserving() {
   closeChromaPanel();
   cleanupBenchSwap();
   document.querySelectorAll(`.${CHROMA_BTN_CLASS}`).forEach(el => el.remove());
-  removeStyles();
 }
 
 async function pollUI() {
@@ -45,7 +45,6 @@ async function pollUI() {
       ensureChromaButton();
     }
 
-    // Check stability for auto-apply
     checkAutoApply(champId);
   } finally {
     pollRunning = false;
@@ -62,11 +61,9 @@ function startObserving() {
   observer.observe(document.body, { childList: true, subtree: true });
   pollTimer = setInterval(pollUI, POLL_INTERVAL_MS);
   pollUI();
-  console.log('[ame] Observing champ select UI...');
 }
 
 export function init(context) {
-  console.log('[ame] Plugin loaded');
   injectStyles();
   wsConnect();
   initSettings();
@@ -86,8 +83,6 @@ export function init(context) {
   });
 
   function handlePhase(phase) {
-    console.log('[ame] Gameflow phase:', phase);
-
     if (phase === 'ReadyCheck') {
       handleReadyCheck();
     } else {
@@ -101,7 +96,6 @@ export function init(context) {
     inGame = IN_GAME_PHASES.includes(phase);
 
     if (inChampSelect && !wasInChampSelect) {
-      console.log('[ame] Entered champ select');
       lastChampionId = null;
       setLastChampionId(null);
       resetSkinsCache();
@@ -109,35 +103,27 @@ export function init(context) {
       setAppliedSkinName(null);
       resetAutoApply();
       startObserving();
-
-      // Log gameflow and timer info for debugging
       fetchAndLogGameflow();
       fetchAndLogTimer();
     } else if (!inChampSelect && wasInChampSelect) {
-      console.log('[ame] Left champ select');
       stopObserving();
-      // Last resort: if nothing was applied yet, apply immediately before game starts
       forceApplyIfNeeded().then(() => resetAutoApply());
       injectionTriggered = true;
     }
 
-    // In-game UI polling
     if (inGame && !wasInGame) {
-      console.log('[ame] Entered in-game phase');
       injectStyles();
       inGamePollTimer = setInterval(() => {
         ensureInGameUI();
         updateInGameStatus();
       }, IN_GAME_POLL_MS);
     } else if (!inGame && wasInGame) {
-      console.log('[ame] Left in-game phase');
       if (inGamePollTimer) { clearInterval(inGamePollTimer); inGamePollTimer = null; }
       removeInGameUI();
     }
 
     if (injectionTriggered && POST_GAME_PHASES.includes(phase)) {
       if (isOverlayActive()) {
-        console.log('[ame] Game ended - sending cleanup');
         wsSend({ type: 'cleanup' });
       }
       injectionTriggered = false;
@@ -148,7 +134,6 @@ export function init(context) {
     handlePhase(event.data);
   });
 
-  // Fetch current phase on init (observer only fires on changes, not initial state)
   fetch('/lol-gameflow/v1/gameflow-phase')
     .then(r => r.ok ? r.json() : null)
     .then(phase => { if (phase) handlePhase(phase); })

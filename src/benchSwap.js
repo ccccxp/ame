@@ -1,4 +1,4 @@
-import { wsSend, onBenchSwap } from './websocket';
+import { onSetting } from './websocket';
 
 let enabled = false;
 let markedEl = null;
@@ -7,14 +7,8 @@ let markLabel = null;
 let swapObserver = null;
 let attached = false;
 
-export function setBenchSwapEnabled(v) {
-  enabled = v;
-  if (!v) clearMark();
-}
-
 export function loadBenchSwapSetting() {
-  onBenchSwap((v) => { enabled = v; });
-  wsSend({ type: 'getBenchSwap' });
+  onSetting('benchSwap', (v) => { enabled = v; if (!v) clearMark(); });
 }
 
 function champIdFrom(el) {
@@ -32,9 +26,7 @@ function hasCooldown(el) {
 }
 
 function clearMark() {
-  if (markLabel && markLabel.parentNode) {
-    markLabel.remove();
-  }
+  if (markLabel?.parentNode) markLabel.remove();
   markLabel = null;
   markedEl = null;
   markedId = null;
@@ -54,25 +46,11 @@ function mark(el, id) {
   markedEl = el;
   markedId = id;
 
-  // Inject small gold dot in the top-right corner
   el.style.position = 'relative';
   const dot = document.createElement('div');
-  Object.assign(dot.style, {
-    position: 'absolute',
-    top: '4px',
-    right: '4px',
-    width: '8px',
-    height: '8px',
-    borderRadius: '50%',
-    background: '#c89b3c',
-    boxShadow: '0 0 4px #c89b3c',
-    zIndex: '99999',
-    pointerEvents: 'none',
-  });
+  dot.className = 'ame-bench-mark';
   el.appendChild(dot);
   markLabel = dot;
-
-  console.log('[ame] Bench marked champion', id);
 
   // Already off cooldown — swap immediately
   if (!hasCooldown(el)) {
@@ -85,23 +63,14 @@ function mark(el, id) {
   swapObserver = new MutationObserver(() => {
     if (!markedEl) return;
 
-    // Element removed from DOM
-    if (!markedEl.isConnected) {
+    if (!markedEl.isConnected || markedEl.classList.contains('empty-bench-item')) {
       clearMark();
       return;
     }
 
-    // Became empty (teammate took it)
-    if (markedEl.classList.contains('empty-bench-item')) {
-      clearMark();
-      return;
-    }
-
-    // Cooldown finished — swap now
     if (!hasCooldown(markedEl)) {
       const swapId = markedId;
       clearMark();
-      console.log('[ame] Cooldown ended, swapping', swapId);
       doSwap(swapId);
     }
   });
@@ -119,7 +88,6 @@ function onClick(e) {
   const id = champIdFrom(item);
   if (!id) return;
 
-  // Toggle off if clicking same one
   if (markedEl === item) {
     clearMark();
     return;
@@ -134,7 +102,6 @@ export function ensureBenchSwap() {
   if (!container) return;
   attached = true;
   container.addEventListener('click', onClick);
-  console.log('[ame] Bench swap ready');
 }
 
 export function cleanupBenchSwap() {

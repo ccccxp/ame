@@ -1,6 +1,4 @@
-import { wsSend, onGamePath, onAutoAccept, onBenchSwap } from './websocket';
-import { setAutoAcceptEnabled } from './autoAcceptMatch';
-import { setBenchSwapEnabled } from './benchSwap';
+import { wsSend, onGamePath, onSetting, refreshSettings } from './websocket';
 
 const NAV_TITLE_CLASS = 'lol-settings-nav-title';
 const AME_NAV_NAME = 'ame-settings';
@@ -38,10 +36,40 @@ function buildNavGroup() {
   return frag;
 }
 
+function buildToggle(id, labelText, settingKey) {
+  const row = document.createElement('div');
+  row.className = 'ame-settings-toggle-row';
+
+  const checkbox = document.createElement('lol-uikit-flat-checkbox');
+  checkbox.setAttribute('for', id);
+
+  const input = document.createElement('input');
+  input.setAttribute('slot', 'input');
+  input.setAttribute('name', id);
+  input.type = 'checkbox';
+  input.id = id;
+  checkbox.appendChild(input);
+
+  const cbLabel = document.createElement('label');
+  cbLabel.setAttribute('slot', 'label');
+  cbLabel.textContent = labelText;
+  checkbox.appendChild(cbLabel);
+
+  input.addEventListener('change', () => {
+    wsSend({ type: `set${settingKey.charAt(0).toUpperCase()}${settingKey.slice(1)}`, enabled: input.checked });
+  });
+
+  onSetting(settingKey, (enabled) => { input.checked = enabled; });
+
+  row.appendChild(checkbox);
+  return row;
+}
+
 function buildPanel() {
   const panel = document.createElement('div');
   panel.className = AME_PANEL_CLASS;
 
+  // Game path section
   const section = document.createElement('div');
   section.className = 'lol-settings-ingame-section-title';
   section.textContent = 'Game Path';
@@ -66,7 +94,6 @@ function buildPanel() {
 
   row.appendChild(flatInput);
   row.appendChild(btn);
-
   panel.appendChild(section);
   panel.appendChild(row);
 
@@ -74,79 +101,21 @@ function buildPanel() {
   const autoAcceptSection = document.createElement('div');
   autoAcceptSection.className = 'lol-settings-ingame-section-title ame-settings-section-gap';
   autoAcceptSection.textContent = 'Auto Accept Match';
-
-  const toggleRow = document.createElement('div');
-  toggleRow.className = 'ame-settings-toggle-row';
-
-  const checkbox = document.createElement('lol-uikit-flat-checkbox');
-  checkbox.setAttribute('for', 'ameAutoAccept');
-
-  const cbInput = document.createElement('input');
-  cbInput.setAttribute('slot', 'input');
-  cbInput.setAttribute('name', 'ameAutoAccept');
-  cbInput.type = 'checkbox';
-  cbInput.id = 'ameAutoAccept';
-  checkbox.appendChild(cbInput);
-
-  const cbLabel = document.createElement('label');
-  cbLabel.setAttribute('slot', 'label');
-  cbLabel.textContent = 'Automatically accept match when found';
-  checkbox.appendChild(cbLabel);
-
-  cbInput.addEventListener('change', () => {
-    const enabled = cbInput.checked;
-    setAutoAcceptEnabled(enabled);
-    wsSend({ type: 'setAutoAccept', enabled });
-  });
-
-  toggleRow.appendChild(checkbox);
   panel.appendChild(autoAcceptSection);
-  panel.appendChild(toggleRow);
+  panel.appendChild(buildToggle('ameAutoAccept', 'Automatically accept match when found', 'autoAccept'));
 
   // Bench Swap toggle
   const benchSwapSection = document.createElement('div');
   benchSwapSection.className = 'lol-settings-ingame-section-title ame-settings-section-gap';
   benchSwapSection.textContent = 'ARAM Bench Swap';
+  panel.appendChild(benchSwapSection);
 
   const benchSwapDesc = document.createElement('label');
-  Object.assign(benchSwapDesc.style, {
-    fontFamily: 'var(--font-body)',
-    fontSize: '12px',
-    color: '#a09b8c',
-    marginTop: '4px',
-    lineHeight: '1.4',
-    display: 'block',
-  });
+  benchSwapDesc.className = 'ame-settings-description';
   benchSwapDesc.textContent = 'Click a champion on the bench while it\'s on cooldown to mark it. When the cooldown ends, it will automatically be swapped to you.';
-
-  const benchSwapRow = document.createElement('div');
-  benchSwapRow.className = 'ame-settings-toggle-row';
-
-  const benchCb = document.createElement('lol-uikit-flat-checkbox');
-  benchCb.setAttribute('for', 'ameBenchSwap');
-
-  const benchCbInput = document.createElement('input');
-  benchCbInput.setAttribute('slot', 'input');
-  benchCbInput.setAttribute('name', 'ameBenchSwap');
-  benchCbInput.type = 'checkbox';
-  benchCbInput.id = 'ameBenchSwap';
-  benchCb.appendChild(benchCbInput);
-
-  const benchCbLabel = document.createElement('label');
-  benchCbLabel.setAttribute('slot', 'label');
-  benchCbLabel.textContent = 'Enable auto bench swap in ARAM';
-  benchCb.appendChild(benchCbLabel);
-
-  benchCbInput.addEventListener('change', () => {
-    const val = benchCbInput.checked;
-    setBenchSwapEnabled(val);
-    wsSend({ type: 'setBenchSwap', enabled: val });
-  });
-
-  benchSwapRow.appendChild(benchCb);
-  panel.appendChild(benchSwapSection);
   panel.appendChild(benchSwapDesc);
-  panel.appendChild(benchSwapRow);
+
+  panel.appendChild(buildToggle('ameBenchSwap', 'Enable auto bench swap in ARAM', 'benchSwap'));
 
   return panel;
 }
@@ -164,7 +133,6 @@ function showAmePanel(settingsContainer) {
   const optionsArea = settingsContainer.querySelector('.lol-settings-options');
   if (!optionsArea) return;
 
-  // Hide existing children
   for (const child of optionsArea.children) {
     if (!child.classList.contains(AME_PANEL_CLASS)) {
       child.dataset.ameHidden = child.style.display;
@@ -172,7 +140,6 @@ function showAmePanel(settingsContainer) {
     }
   }
 
-  // Add our panel if not already there
   let panel = optionsArea.querySelector(`.${AME_PANEL_CLASS}`);
   if (!panel) {
     panel = buildPanel();
@@ -180,32 +147,13 @@ function showAmePanel(settingsContainer) {
   }
   panel.style.display = '';
 
-  // Populate input from server
   const input = panel.querySelector('input[type="text"]');
   if (input) {
-    onGamePath((path) => {
-      input.value = path || '';
-    });
+    onGamePath((path) => { input.value = path || ''; });
     wsSend({ type: 'getGamePath' });
   }
 
-  // Populate auto-accept checkbox from server
-  const cbInput = panel.querySelector('#ameAutoAccept');
-  if (cbInput) {
-    onAutoAccept((enabled) => {
-      cbInput.checked = enabled;
-    });
-    wsSend({ type: 'getAutoAccept' });
-  }
-
-  // Populate bench-swap checkbox from server
-  const benchInput = panel.querySelector('#ameBenchSwap');
-  if (benchInput) {
-    onBenchSwap((enabled) => {
-      benchInput.checked = enabled;
-    });
-    wsSend({ type: 'getBenchSwap' });
-  }
+  refreshSettings();
 }
 
 function hideAmePanel(settingsContainer) {
@@ -215,7 +163,6 @@ function hideAmePanel(settingsContainer) {
   const panel = optionsArea.querySelector(`.${AME_PANEL_CLASS}`);
   if (panel) panel.style.display = 'none';
 
-  // Restore hidden children
   for (const child of optionsArea.children) {
     if (child.dataset.ameHidden !== undefined) {
       child.style.display = child.dataset.ameHidden;
@@ -223,7 +170,6 @@ function hideAmePanel(settingsContainer) {
     }
   }
 
-  // Deselect our nav item
   const ameItem = settingsContainer.querySelector(`lol-uikit-navigation-item[name="${AME_NAV_NAME}"]`);
   if (ameItem) ameItem.removeAttribute('active');
 }
@@ -234,7 +180,6 @@ function inject(settingsContainer) {
   const scrollerContent = settingsContainer.querySelector('.lol-settings-nav-scroller > div');
   if (!scrollerContent) return;
 
-  // Don't re-inject if already present
   if (scrollerContent.querySelector(`[data-ame="1"]`)) {
     injected = true;
     return;
@@ -243,7 +188,6 @@ function inject(settingsContainer) {
   scrollerContent.prepend(buildNavGroup());
   injected = true;
 
-  // Handle our nav item click
   const ameItem = scrollerContent.querySelector(`lol-uikit-navigation-item[name="${AME_NAV_NAME}"]`);
   if (ameItem) {
     ameItem.addEventListener('click', (e) => {
@@ -255,7 +199,6 @@ function inject(settingsContainer) {
     });
   }
 
-  // When any other nav item is clicked, hide our panel
   scrollerContent.addEventListener('click', (e) => {
     const navItem = e.target.closest('lol-uikit-navigation-item');
     if (!navItem) return;
@@ -291,7 +234,6 @@ export function initSettings() {
     return;
   }
 
-  // Listen for settings button click — starts retry immediately
   document.addEventListener('click', (e) => {
     if (e.target.closest('.app-controls-settings')) {
       if (!retryTimer) {
@@ -300,7 +242,6 @@ export function initSettings() {
     }
   });
 
-  // Fallback: MutationObserver for cases where dialog appears without button click
   settingsObserver = new MutationObserver(() => {
     const container = document.querySelector('.lol-settings-container');
     if (container) {
@@ -313,7 +254,5 @@ export function initSettings() {
   });
 
   settingsObserver.observe(document.body, { childList: true, subtree: true });
-
-  // Check immediately in case settings is already open
   tryInject();
 }

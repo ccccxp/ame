@@ -1,6 +1,6 @@
 import { SKIN_SELECTORS } from './constants';
 
-export function slugify(str) {
+function slugify(str) {
   return str
     .normalize('NFKD')
     .toLowerCase()
@@ -97,9 +97,6 @@ export function findSkinByCarouselKey(skins, key) {
 export function getChromaData(skins, currentSkinName) {
   if (!skins || !currentSkinName) return null;
   const skin = findSkinByName(skins, currentSkinName);
-  console.log('[ame][chroma] findSkinByName("' + currentSkinName + '") =>', skin ? `id:${skin.id} name:"${skin.name}" chromas:${skin.chromas?.length}` : 'NOT FOUND',
-    '| slugified input:', slugify(currentSkinName),
-    '| slugified names:', skins.map(s => slugify(s.name)).join(', '));
   if (!skin || !skin.chromas || skin.chromas.length === 0) return null;
   return { skin, chromas: skin.chromas };
 }

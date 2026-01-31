@@ -1,61 +1,44 @@
 import { loadChampionSkins, getMyChampionId } from './api';
 import { readCurrentSkin, findSkinByName, isDefaultSkin } from './skin';
 import { wsSend, wsSendApply } from './websocket';
-import { setAppliedSkinName, getAppliedSkinName } from './chroma';
+import {
+  getAppliedSkinName, setAppliedSkinName,
+  getSelectedChroma, setSelectedChroma, clearSelectedChroma,
+  getAppliedChromaId, setAppliedChromaId,
+} from './state';
 import { setButtonState } from './ui';
 import { PREFETCH_DEBOUNCE_MS } from './constants';
 
-const AUTO_APPLY_STABLE_MS = 10000; // 10 seconds of stability
-const LOG_PREFIX = '[ame:auto]';
+const AUTO_APPLY_STABLE_MS = 10000;
+const LOG = '[ame:auto]';
 
-// State
+// Tracking state (local to this module — not shared)
 let lastTrackedSkin = null;
 let lastTrackedChampion = null;
 let stableSince = null;
 let autoApplyTriggered = false;
-let epoch = 0; // incremented on reset; async flows bail if epoch changes
-
-// Chroma selection state
-let selectedChromaId = null;
-let selectedChromaBaseSkinId = null;
-
-// Applied chroma tracking (to detect chroma-only changes for re-arm)
-let appliedChromaId = null;
-
-// Prefetch debounce
+let epoch = 0;
 let prefetchTimer = null;
 
 /**
- * Set the selected chroma (called from chroma.js when user clicks a chroma).
- * Resets stability timer so auto-apply waits another 10s.
+ * Notify auto-apply that a chroma was selected — resets stability timer.
  */
-export function setSelectedChroma(chromaId, baseSkinId) {
-  console.log(`${LOG_PREFIX} Chroma selected: ${chromaId} (base: ${baseSkinId})`);
-  selectedChromaId = chromaId;
-  selectedChromaBaseSkinId = baseSkinId;
+export function onChromaSelected(chromaId, baseSkinId) {
+  console.log(`${LOG} Chroma selected: ${chromaId} (base: ${baseSkinId})`);
+  setSelectedChroma(chromaId, baseSkinId);
   stableSince = Date.now();
   autoApplyTriggered = false;
 }
 
 /**
- * Clear chroma selection (called when base skin changes or on reset).
+ * Send an immediate prefetch for a chroma (explicit click, no debounce).
  */
-export function clearSelectedChroma() {
-  selectedChromaId = null;
-  selectedChromaBaseSkinId = null;
+export function prefetchChroma(championId, chromaId, baseSkinId) {
+  wsSend({ type: 'prefetch', championId, skinId: chromaId, baseSkinId });
 }
 
-/**
- * Get the currently selected chroma, or null if none.
- */
-export function getSelectedChroma() {
-  if (!selectedChromaId) return null;
-  return { id: selectedChromaId, baseSkinId: selectedChromaBaseSkinId };
-}
+// --- Prefetch debounce ---
 
-/**
- * Cancel any pending prefetch.
- */
 function cancelPrefetch() {
   if (prefetchTimer) {
     clearTimeout(prefetchTimer);
@@ -63,10 +46,6 @@ function cancelPrefetch() {
   }
 }
 
-/**
- * Start a debounced prefetch for the given skin.
- * Cancels any previous pending prefetch.
- */
 function debouncePrefetch(championId, skinName) {
   cancelPrefetch();
   const startEpoch = epoch;
@@ -80,155 +59,98 @@ function debouncePrefetch(championId, skinName) {
     const skin = findSkinByName(skins, skinName);
     if (!skin || isDefaultSkin(skin)) return;
 
-    // Only send prefetch if still on this skin
     if (lastTrackedSkin === skinName && lastTrackedChampion === championId) {
-      console.log(`${LOG_PREFIX} Prefetching skin: ${skinName} (id: ${skin.id})`);
       wsSend({ type: 'prefetch', championId, skinId: skin.id });
     }
   }, PREFETCH_DEBOUNCE_MS);
 }
 
-/**
- * Send an immediate prefetch for a chroma (no debounce, since it's an explicit click).
- */
-export function prefetchChroma(championId, chromaId, baseSkinId) {
-  console.log(`${LOG_PREFIX} Prefetching chroma: ${chromaId} (base: ${baseSkinId})`);
-  wsSend({ type: 'prefetch', championId, skinId: chromaId, baseSkinId });
-}
+// --- Force apply (last resort before game starts) ---
 
-/**
- * Force an immediate apply if nothing has been applied yet.
- * Called when leaving champ select (game about to start) as a last resort.
- */
 export async function forceApplyIfNeeded() {
-  // Already applied — nothing to do
-  if (getAppliedSkinName()) {
-    console.log(`${LOG_PREFIX} forceApply: already applied, skipping`);
-    return;
-  }
+  if (getAppliedSkinName()) return;
 
   const skinName = lastTrackedSkin || readCurrentSkin();
   const championId = lastTrackedChampion || await getMyChampionId();
-  if (!skinName || !championId) {
-    console.log(`${LOG_PREFIX} forceApply: no skin or champion available, skipping`);
-    return;
-  }
+  if (!skinName || !championId) return;
 
   const skins = await loadChampionSkins(championId);
-  if (!skins) {
-    console.log(`${LOG_PREFIX} forceApply: could not load skins, skipping`);
-    return;
-  }
+  if (!skins) return;
 
   const skin = findSkinByName(skins, skinName);
-  if (!skin) {
-    console.log(`${LOG_PREFIX} forceApply: skin "${skinName}" not found, skipping`);
-    return;
-  }
+  if (!skin || isDefaultSkin(skin)) return;
 
-  if (isDefaultSkin(skin)) {
-    console.log(`${LOG_PREFIX} forceApply: default skin "${skinName}", skipping`);
-    return;
-  }
-
-  if (selectedChromaId) {
-    console.log(`${LOG_PREFIX} *** FORCE APPLY (chroma) *** ${selectedChromaId} (base: ${selectedChromaBaseSkinId}) | Champion: ${championId}`);
-    wsSendApply({ type: 'apply', championId, skinId: selectedChromaId, baseSkinId: selectedChromaBaseSkinId });
+  const chroma = getSelectedChroma();
+  if (chroma) {
+    wsSendApply({ type: 'apply', championId, skinId: chroma.id, baseSkinId: chroma.baseSkinId });
   } else {
-    console.log(`${LOG_PREFIX} *** FORCE APPLY *** ${skinName} | Skin ID: ${skin.id} | Champion: ${championId}`);
     wsSendApply({ type: 'apply', championId, skinId: skin.id });
   }
 
   setAppliedSkinName(skinName);
-  appliedChromaId = selectedChromaId || null;
+  setAppliedChromaId(chroma?.id || null);
   setButtonState('Applied', true);
 }
 
-/**
- * Reset auto-apply state (called when entering/leaving champ select)
- */
+// --- Reset ---
+
 export function resetAutoApply() {
-  console.log(`${LOG_PREFIX} Resetting auto-apply state`);
   lastTrackedSkin = null;
   lastTrackedChampion = null;
   stableSince = null;
   autoApplyTriggered = false;
   epoch++;
   clearSelectedChroma();
-  appliedChromaId = null;
+  setAppliedChromaId(null);
   cancelPrefetch();
 }
 
-/**
- * Check if skin and champion have been stable long enough to auto-apply.
- * Called from pollUI every 300ms.
- *
- * Tracking (lastTrackedSkin/lastTrackedChampion) always runs so that
- * in-flight triggerAutoApply() can detect mid-await changes.
- * Only the trigger decision is gated by autoApplyTriggered.
- */
+// --- Stability check (called every poll cycle) ---
+
 export function checkAutoApply(championId) {
   const skinName = readCurrentSkin();
+  const chroma = getSelectedChroma();
 
-  // Build a combined key that includes chroma selection
-  const currentKey = `${skinName || ''}|${selectedChromaId || ''}`;
-  const appliedKey = `${getAppliedSkinName() || ''}|${appliedChromaId || ''}`;
+  const currentKey = `${skinName || ''}|${chroma?.id || ''}`;
+  const appliedKey = `${getAppliedSkinName() || ''}|${getAppliedChromaId() || ''}`;
 
-  // Re-arm: if user changed skin or chroma since last apply, clear and re-arm
-  const applied = getAppliedSkinName();
-  if (applied) {
+  // Re-arm if user changed selection since last apply
+  if (getAppliedSkinName()) {
     if (currentKey !== appliedKey) {
-      console.log(`${LOG_PREFIX} Selection changed from applied "${appliedKey}" to "${currentKey}", re-arming auto-apply`);
       setAppliedSkinName(null);
-      appliedChromaId = null;
+      setAppliedChromaId(null);
       setButtonState('Apply Skin', false);
       autoApplyTriggered = false;
-      // Fall through to start tracking the new selection
     } else {
       return;
     }
   }
 
-  // Need both values present — but don't clear existing tracking,
-  // the DOM may temporarily show nothing (e.g. game loading transition)
-  if (!skinName || !championId) {
-    return;
-  }
+  if (!skinName || !championId) return;
 
-  // Detect changes in skin name, champion, or chroma
   const skinChanged = skinName !== lastTrackedSkin;
   const champChanged = championId !== lastTrackedChampion;
 
   if (skinChanged || champChanged) {
-    if (skinChanged) {
-      // Different base skin means different chromas — clear selection
-      clearSelectedChroma();
-    }
+    if (skinChanged) clearSelectedChroma();
 
-    console.log(`${LOG_PREFIX} Change detected: champ ${lastTrackedChampion} -> ${championId}, skin "${lastTrackedSkin}" -> "${skinName}"`);
     lastTrackedSkin = skinName;
     lastTrackedChampion = championId;
     stableSince = Date.now();
     autoApplyTriggered = false;
-
-    // Start debounced prefetch for the new skin
     debouncePrefetch(championId, skinName);
-
     return;
   }
 
-  // Only trigger if not already in-flight
   if (autoApplyTriggered) return;
 
-  // Both values stable — check if long enough
   if (stableSince && Date.now() - stableSince >= AUTO_APPLY_STABLE_MS) {
     triggerAutoApply();
   }
 }
 
-/**
- * Trigger the auto-apply
- */
+// --- Auto-apply trigger ---
+
 async function triggerAutoApply() {
   if (autoApplyTriggered) return;
   autoApplyTriggered = true;
@@ -236,22 +158,15 @@ async function triggerAutoApply() {
   const startEpoch = epoch;
   const startSkin = lastTrackedSkin;
   const startChampion = lastTrackedChampion;
-  const startChromaId = selectedChromaId;
-  const startChromaBaseSkinId = selectedChromaBaseSkinId;
+  const startChroma = getSelectedChroma();
 
-  // Re-check manual apply (may have happened between poll cycles)
   if (getAppliedSkinName()) {
-    console.log(`${LOG_PREFIX} Skin already applied manually, skipping auto-apply`);
     autoApplyTriggered = false;
     return;
   }
 
-  console.log(`${LOG_PREFIX} *** TRIGGERING AUTO-APPLY ***`);
-
-  const skinName = startSkin;
   const championId = startChampion;
   if (!championId) {
-    console.log(`${LOG_PREFIX} No champion, cannot auto-apply`);
     autoApplyTriggered = false;
     stableSince = Date.now();
     return;
@@ -259,112 +174,75 @@ async function triggerAutoApply() {
 
   const skins = await loadChampionSkins(championId);
 
-  // Bail if phase changed (left champ select) during await
-  if (epoch !== startEpoch) {
-    console.log(`${LOG_PREFIX} Epoch changed during skin load, aborting auto-apply`);
-    return;
-  }
+  if (epoch !== startEpoch) return;
 
   if (!skins) {
-    console.log(`${LOG_PREFIX} Could not load skins, cannot auto-apply`);
     autoApplyTriggered = false;
     stableSince = Date.now();
     return;
   }
 
-  // Re-validate: champ/skin/chroma may have changed during the await
-  if (lastTrackedSkin !== startSkin || lastTrackedChampion !== startChampion || selectedChromaId !== startChromaId) {
-    console.log(`${LOG_PREFIX} Selection changed during skin load, aborting auto-apply`);
+  // Verify nothing changed during the await
+  const currentChroma = getSelectedChroma();
+  if (lastTrackedSkin !== startSkin || lastTrackedChampion !== startChampion || currentChroma?.id !== startChroma?.id) {
     autoApplyTriggered = false;
     stableSince = Date.now();
     return;
   }
 
-  const skin = findSkinByName(skins, skinName);
+  const skin = findSkinByName(skins, startSkin);
   if (!skin) {
-    console.log(`${LOG_PREFIX} Skin not found: ${skinName}, cannot auto-apply`);
     autoApplyTriggered = false;
     stableSince = Date.now();
     return;
   }
 
   if (isDefaultSkin(skin)) {
-    console.log(`${LOG_PREFIX} Default skin "${skinName}", skipping auto-apply`);
     autoApplyTriggered = false;
     return;
   }
 
-  // Re-check: user may have manually applied during the awaits above
   if (getAppliedSkinName()) {
-    console.log(`${LOG_PREFIX} Skin manually applied during auto-apply, skipping`);
     autoApplyTriggered = false;
     return;
   }
 
-  // Final DOM check: abort if user changed skin since trigger (poll may not have run yet)
+  // Final DOM check
   if (readCurrentSkin() !== startSkin) {
-    console.log(`${LOG_PREFIX} Skin changed since trigger, aborting auto-apply`);
     autoApplyTriggered = false;
     stableSince = Date.now();
     return;
   }
 
-  // Apply with chroma if selected, otherwise base skin
-  if (startChromaId) {
-    console.log(`${LOG_PREFIX} Auto-applying chroma: ${startChromaId} (base: ${startChromaBaseSkinId}) | Champion ID: ${championId}`);
-    wsSendApply({ type: 'apply', championId, skinId: startChromaId, baseSkinId: startChromaBaseSkinId });
+  if (startChroma) {
+    wsSendApply({ type: 'apply', championId, skinId: startChroma.id, baseSkinId: startChroma.baseSkinId });
   } else {
-    console.log(`${LOG_PREFIX} Auto-applying: ${skinName} | Skin ID: ${skin.id} | Champion ID: ${championId}`);
     wsSendApply({ type: 'apply', championId, skinId: skin.id });
   }
 
-  // Track what was applied (base skin name for DOM matching + chroma ID)
-  setAppliedSkinName(skinName);
-  appliedChromaId = startChromaId || null;
+  setAppliedSkinName(startSkin);
+  setAppliedChromaId(startChroma?.id || null);
   setButtonState('Applied', true);
-
-  console.log(`${LOG_PREFIX} Auto-apply completed successfully!`);
 }
 
-/**
- * Fetch and log the timer data separately (for detailed debugging)
- */
+// --- Debug helpers ---
+
 export async function fetchAndLogTimer() {
   try {
     const res = await fetch('/lol-champ-select/v1/session/timer');
-    if (!res.ok) {
-      console.log(`${LOG_PREFIX} Timer fetch failed: ${res.status}`);
-      return null;
-    }
-    const timer = await res.json();
-    console.log(`${LOG_PREFIX} Timer data:`, timer);
-    return timer;
-  } catch (e) {
-    console.log(`${LOG_PREFIX} Timer fetch error:`, e.message);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
     return null;
   }
 }
 
-/**
- * Fetch gameflow session for queue info (ARAM detection)
- */
 export async function fetchAndLogGameflow() {
   try {
     const res = await fetch('/lol-gameflow/v1/session');
-    if (!res.ok) {
-      console.log(`${LOG_PREFIX} Gameflow fetch failed: ${res.status}`);
-      return null;
-    }
-    const gameflow = await res.json();
-    console.log(`${LOG_PREFIX} Gameflow data:`, {
-      gameMode: gameflow.gameData?.queue?.gameMode,
-      queueId: gameflow.gameData?.queue?.id,
-      mapId: gameflow.map?.id,
-      phase: gameflow.phase,
-    });
-    return gameflow;
-  } catch (e) {
-    console.log(`${LOG_PREFIX} Gameflow fetch error:`, e.message);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
     return null;
   }
 }
