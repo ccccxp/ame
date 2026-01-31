@@ -28,8 +28,10 @@ export function wsConnect() {
     ws.onopen = () => {
       console.log('[ame] WebSocket connected');
       wsReconnectDelay = WS_RECONNECT_BASE_MS;
-      // Query server for current overlay state (survives client restarts)
+      // Hydrate all state from server on connect/reconnect
       ws.send(JSON.stringify({ type: 'query' }));
+      ws.send(JSON.stringify({ type: 'getAutoAccept' }));
+      ws.send(JSON.stringify({ type: 'getBenchSwap' }));
     };
     ws.onmessage = (e) => {
       try {
@@ -53,12 +55,10 @@ export function wsConnect() {
         } else if (msg.type === 'autoAccept') {
           if (autoAcceptCallback) {
             autoAcceptCallback(!!msg.enabled);
-            autoAcceptCallback = null;
           }
         } else if (msg.type === 'benchSwap') {
           if (benchSwapCallback) {
             benchSwapCallback(!!msg.enabled);
-            benchSwapCallback = null;
           }
         } else if (msg.type === 'status') {
           if (msg.status === 'ready' && applyResolve) {
