@@ -97,7 +97,8 @@ func printBanner() {
 	fmt.Println()
 }
 
-// checkForUpdates checks for new versions and prompts user to update
+// checkForUpdates checks for new versions. Downloads the update and either
+// auto-restarts (when minimized or autoUpdate is on) or prompts the user.
 func checkForUpdates() {
 	if Version == "dev" {
 		return
@@ -120,76 +121,73 @@ func checkForUpdates() {
 	fmt.Println()
 	fmt.Printf("  New version: %s (current: %s)\n", result.LatestVersion, Version)
 
-	if result.Downloaded && updater.VerifyUpdateFile() {
-		fmt.Println()
-		fmt.Print("  Update now? [Y/n]: ")
-
-		var input string
-		fmt.Scanln(&input)
-		input = strings.ToLower(strings.TrimSpace(input))
-
-		if input == "" || input == "y" || input == "yes" {
-			exePath, err := os.Executable()
-			if err != nil {
-				fmt.Printf("  ! Failed to update: %v\n", err)
-				return
-			}
-
-			fmt.Println("  Restarting...")
-
-			// Use PowerShell with rename-based atomic swap (more reliable than copy-overwrite)
-			// Pattern: rename old exe -> move new exe into place -> delete old -> launch
-			// This avoids file locking issues since rename works even if file is "in use"
-			psScript := fmt.Sprintf(
-				`$host.UI.RawUI.WindowTitle = 'ame updater'; `+
-					`Write-Host 'Updating ame...' -ForegroundColor Cyan; `+
-					`$ErrorActionPreference = 'Stop'; `+
-					`$updatePath = '%s'; `+
-					`$exePath = '%s'; `+
-					`$backupPath = $exePath + '.old'; `+
-					`$maxRetries = 15; `+
-					`$success = $false; `+
-					`Write-Host "Update file: $updatePath"; `+
-					`Write-Host "Target: $exePath"; `+
-					`Remove-Item -Path $backupPath -Force -ErrorAction SilentlyContinue; `+
-					`for ($i = 1; $i -le $maxRetries; $i++) { `+
-					`Write-Host "Attempt $i/$maxRetries..." -ForegroundColor Yellow; `+
-					`Start-Sleep -Seconds 2; `+
-					`try { `+
-					`Rename-Item -Path $exePath -NewName ($exePath + '.old') -Force; `+
-					`Move-Item -Path $updatePath -Destination $exePath -Force; `+
-					`$success = $true; `+
-					`Write-Host 'Update successful!' -ForegroundColor Green; `+
-					`break; `+
-					`} catch { `+
-					`Write-Host "  Error: $_" -ForegroundColor Red; `+
-					`} `+
-					`} `+
-					`if ($success) { `+
-					`Remove-Item -Path $backupPath -Force -ErrorAction SilentlyContinue; `+
-					`Write-Host 'Launching new version...' -ForegroundColor Cyan; `+
-					`Start-Process -FilePath $exePath -Verb RunAs; `+
-					`} else { `+
-					`if (Test-Path $backupPath) { Rename-Item -Path $backupPath -NewName $exePath -Force -ErrorAction SilentlyContinue }; `+
-					`Write-Host 'Update failed after 30s. Please close the app fully and try again.' -ForegroundColor Red; `+
-					`Read-Host 'Press Enter to exit'; `+
-					`}`,
-				updater.GetUpdateFilePath(), exePath)
-
-			cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-NoExit", "-Command", psScript)
-			cmd.SysProcAttr = &syscall.SysProcAttr{
-				CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP,
-			}
-			if err := cmd.Start(); err != nil {
-				fmt.Printf("  ! Failed to start updater: %v\n", err)
-				return
-			}
-			os.Exit(0)
-		}
-	} else {
+	if !result.Downloaded || !updater.VerifyUpdateFile() {
 		fmt.Println("  Download: https://github.com/hoangvu12/ame/releases/latest")
+		fmt.Println()
+		return
+	}
+
+	// Auto-update when running minimized or when the setting is enabled
+	if minimized || config.AutoUpdate() {
+		fmt.Println("  Applying update...")
+		restartViaLauncher()
+		return
+	}
+
+	fmt.Println()
+	fmt.Print("  Update now? [Y/n]: ")
+
+	var input string
+	fmt.Scanln(&input)
+	input = strings.ToLower(strings.TrimSpace(input))
+
+	if input == "" || input == "y" || input == "yes" {
+		fmt.Println("  Restarting...")
+		restartViaLauncher()
 	}
 	fmt.Println()
+}
+
+// restartViaLauncher launches ame.exe (the launcher) which will apply the
+// pending update and start the new core. Then exits the current process.
+func restartViaLauncher() {
+	// Find the launcher (ame.exe) — it's the exe that originally launched us,
+	// or we can find it via the startup task / original path.
+	// The simplest approach: look for ame.exe next to the user's original location.
+	// Since we're running as ame_core.exe in AppData, we need the launcher path.
+	// The launcher passes its own path to core via --launcher flag.
+	launcherPath := getLauncherPath()
+	if launcherPath == "" {
+		fmt.Println("  ! Could not find launcher to restart")
+		return
+	}
+
+	// Forward flags to launcher
+	var args []string
+	if minimized {
+		args = append(args, "--minimized")
+	}
+
+	cmd := exec.Command(launcherPath, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP,
+	}
+	if err := cmd.Start(); err != nil {
+		fmt.Printf("  ! Failed to restart: %v\n", err)
+		return
+	}
+	os.Exit(0)
+}
+
+// getLauncherPath returns the path to ame.exe (the launcher).
+// Core receives it via --launcher flag, falls back to scanning args.
+func getLauncherPath() string {
+	for i, arg := range os.Args {
+		if arg == "--launcher" && i+1 < len(os.Args) {
+			return os.Args[i+1]
+		}
+	}
+	return ""
 }
 
 // disableQuickEdit disables QuickEdit mode to prevent terminal from pausing on click
@@ -278,7 +276,66 @@ func syncStartup() {
 	}
 }
 
+// runLauncher runs in launcher mode: applies pending updates, bootstraps core, launches it.
+func runLauncher() {
+	exePath, err := os.Executable()
+	if err != nil {
+		fmt.Printf("  ! Failed to get executable path: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Apply pending update (replaces ame_core.exe before it starts)
+	if updater.ApplyPendingUpdate() {
+		fmt.Println("  Update applied!")
+	}
+
+	// Bootstrap: copy self to ame_core.exe if it doesn't exist yet
+	if err := updater.BootstrapCore(exePath); err != nil {
+		fmt.Printf("  ! Failed to bootstrap core: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Build args for core: add --core flag and pass launcher path
+	var args []string
+	args = append(args, "--core")
+	args = append(args, "--launcher", exePath)
+	for _, arg := range os.Args[1:] {
+		args = append(args, arg)
+	}
+
+	corePath := updater.CorePath()
+	cmd := exec.Command(corePath, args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP,
+	}
+
+	if err := cmd.Start(); err != nil {
+		fmt.Printf("  ! Failed to start core: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Launcher exits — core runs independently
+	os.Exit(0)
+}
+
 func main() {
+	// Check for admin privileges first (both launcher and core need it)
+	if !isAdmin() {
+		runAsAdmin()
+		os.Exit(0)
+	}
+
+	// Dev mode or --core flag: run as core (the actual app)
+	// Otherwise: run as launcher
+	if Version != "dev" && !hasFlag("--core") {
+		runLauncher()
+		return
+	}
+
+	// === CORE MODE ===
 	minimized = hasFlag("--minimized")
 
 	// Initialize console handle for tray functionality
@@ -293,12 +350,6 @@ func main() {
 	// Hide console immediately when launched minimized
 	if minimized {
 		hideConsole()
-	}
-
-	// Check for admin privileges
-	if !isAdmin() {
-		runAsAdmin()
-		os.Exit(0)
 	}
 
 	// Load settings (migrates gamedir.txt → settings.json on first run)
@@ -338,10 +389,8 @@ func main() {
 		updater.CleanupUpdateFile()
 	}
 
-	// Skip interactive update prompt when running minimized
-	if !minimized {
-		checkForUpdates()
-	}
+	// Check for updates (auto-applies when minimized or autoUpdate is on)
+	checkForUpdates()
 
 	// Run setup (downloads dependencies if needed)
 	if !setup.RunSetup(setupConfig) {

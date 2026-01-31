@@ -284,6 +284,7 @@ func handleConnection(conn *websocket.Conn) {
 				"autoAccept":       s.AutoAccept,
 				"benchSwap":        s.BenchSwap,
 				"startWithWindows": s.StartWithWindows,
+				"autoUpdate":       s.AutoUpdate,
 			}
 			data, _ := json.Marshal(resp)
 			conn.WriteMessage(websocket.TextMessage, data)
@@ -331,6 +332,19 @@ func handleConnection(conn *websocket.Conn) {
 				sendStatus(conn, "error", "Failed to save startup setting")
 			} else {
 				resp := BoolSettingMessage{Type: "startWithWindows", Enabled: msg.Enabled}
+				data, _ := json.Marshal(resp)
+				conn.WriteMessage(websocket.TextMessage, data)
+			}
+
+		case "setAutoUpdate":
+			var msg BoolSettingMessage
+			if err := json.Unmarshal(message, &msg); err != nil {
+				continue
+			}
+			if err := config.SetAutoUpdate(msg.Enabled); err != nil {
+				sendStatus(conn, "error", "Failed to save auto-update setting")
+			} else {
+				resp := BoolSettingMessage{Type: "autoUpdate", Enabled: msg.Enabled}
 				data, _ := json.Marshal(resp)
 				conn.WriteMessage(websocket.TextMessage, data)
 			}

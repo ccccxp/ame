@@ -20,6 +20,7 @@ const (
 var (
 	VERSION_FILE = filepath.Join(config.AmeDir, "version.txt")
 	UPDATE_FILE  = filepath.Join(config.AmeDir, "ame_update.exe")
+	CORE_FILE    = filepath.Join(config.AmeDir, "ame_core.exe")
 )
 
 // GitHubRelease represents the GitHub API response for a release
@@ -41,7 +42,6 @@ type UpdateResult struct {
 	LatestVersion   string
 	DownloadURL     string
 	Downloaded      bool
-	UpdatePath      string
 }
 
 // GetSavedVersion reads the version from the version file
@@ -196,7 +196,6 @@ func CheckForUpdates(currentVersion string) (*UpdateResult, error) {
 			return result, fmt.Errorf("failed to download update: %w", err)
 		}
 		result.Downloaded = true
-		result.UpdatePath = UPDATE_FILE
 	}
 
 	return result, nil
@@ -219,11 +218,6 @@ func CleanupUpdateFile() {
 	os.Remove(UPDATE_FILE)
 }
 
-// GetUpdateFilePath returns the path to the update file
-func GetUpdateFilePath() string {
-	return UPDATE_FILE
-}
-
 // VerifyUpdateFile checks if the update file exists and is valid
 func VerifyUpdateFile() bool {
 	info, err := os.Stat(UPDATE_FILE)
@@ -234,3 +228,58 @@ func VerifyUpdateFile() bool {
 	return info.Size() > 1024*1024
 }
 
+// ApplyPendingUpdate replaces ame_core.exe with ame_update.exe if a pending update exists.
+// Called by the launcher before starting core.
+func ApplyPendingUpdate() bool {
+	if !VerifyUpdateFile() {
+		return false
+	}
+
+	// Remove old core (ignore error — may not exist on first run)
+	os.Remove(CORE_FILE)
+
+	// Move update → core
+	if err := os.Rename(UPDATE_FILE, CORE_FILE); err != nil {
+		// Rename failed (cross-device?), try copy+delete
+		if copyErr := copyFile(UPDATE_FILE, CORE_FILE); copyErr != nil {
+			return false
+		}
+		os.Remove(UPDATE_FILE)
+	}
+
+	return true
+}
+
+// BootstrapCore copies the current executable to ame_core.exe if it doesn't exist.
+func BootstrapCore(srcExe string) error {
+	if _, err := os.Stat(CORE_FILE); err == nil {
+		return nil // already exists
+	}
+	os.MkdirAll(config.AmeDir, os.ModePerm)
+	return copyFile(srcExe, CORE_FILE)
+}
+
+// CorePath returns the path to ame_core.exe
+func CorePath() string {
+	return CORE_FILE
+}
+
+// copyFile copies src to dst
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	return out.Close()
+}

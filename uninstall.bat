@@ -47,9 +47,18 @@ echo.
 :: Kill running processes
 echo   %DIM%Stopping processes...%R%
 taskkill /F /IM "ame.exe" >nul 2>&1
+taskkill /F /IM "ame_core.exe" >nul 2>&1
 taskkill /F /IM "ame-server.exe" >nul 2>&1
 taskkill /F /IM "mod-tools.exe" >nul 2>&1
 taskkill /F /IM "Pengu Loader.exe" >nul 2>&1
+
+:: Remove scheduled task (Start with Windows)
+schtasks /delete /tn "ame" /f >nul 2>&1
+if !errorlevel!==0 (
+    echo   %GREEN%[OK]%R% Removed startup task
+) else (
+    echo   %DIM%[--]%R% No startup task found
+)
 
 :: Check if Pengu is installed in ame's directory or externally
 :: Query registry for Pengu installation path

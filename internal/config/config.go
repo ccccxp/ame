@@ -31,6 +31,7 @@ type Settings struct {
 	AutoAccept       bool   `json:"autoAccept"`
 	BenchSwap        bool   `json:"benchSwap"`
 	StartWithWindows bool   `json:"startWithWindows"`
+	AutoUpdate       bool   `json:"autoUpdate"`
 }
 
 // Init loads settings from disk.
@@ -38,6 +39,9 @@ type Settings struct {
 func Init() error {
 	mu.Lock()
 	defer mu.Unlock()
+
+	// Set defaults before loading (fields missing from JSON keep these values)
+	settings.AutoUpdate = true
 
 	// Try settings.json first
 	data, err := os.ReadFile(settingsPath)
@@ -60,7 +64,8 @@ func Init() error {
 		}
 	}
 
-	// Neither file exists — start with zero-value settings
+	// Neither file exists — start with defaults
+	settings.AutoUpdate = true
 	return nil
 }
 
@@ -128,6 +133,21 @@ func SetStartWithWindows(enabled bool) error {
 	mu.Lock()
 	defer mu.Unlock()
 	settings.StartWithWindows = enabled
+	return save()
+}
+
+// AutoUpdate returns the current auto-update setting.
+func AutoUpdate() bool {
+	mu.RLock()
+	defer mu.RUnlock()
+	return settings.AutoUpdate
+}
+
+// SetAutoUpdate updates and persists the auto-update setting.
+func SetAutoUpdate(enabled bool) error {
+	mu.Lock()
+	defer mu.Unlock()
+	settings.AutoUpdate = enabled
 	return save()
 }
 

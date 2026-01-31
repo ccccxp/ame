@@ -61,7 +61,9 @@ function buildPanel() {
     ),
     buildToggle('ameBenchSwap', 'Enable auto bench swap in ARAM', 'benchSwap'),
     el('div', { class: 'lol-settings-ingame-section-title ame-settings-section-gap' }, 'Startup'),
-    buildToggle('ameStartWithWindows', 'Start ame with Windows', 'startWithWindows')
+    buildToggle('ameStartWithWindows', 'Start ame with Windows', 'startWithWindows'),
+    el('div', { class: 'lol-settings-ingame-section-title ame-settings-section-gap' }, 'Updates'),
+    buildToggle('ameAutoUpdate', 'Automatically install updates', 'autoUpdate')
   );
 }
 
