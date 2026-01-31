@@ -40,3 +40,33 @@ export function resetSkinsCache() {
   cachedChampionId = null;
   cacheEpoch++;
 }
+
+let championSummaryCache = null;
+
+export async function loadChampionSummary() {
+  if (championSummaryCache) return championSummaryCache;
+  const data = await fetchJson('/lol-game-data/assets/v1/champion-summary.json');
+  if (!data || !Array.isArray(data)) return null;
+  championSummaryCache = data;
+  return data;
+}
+
+export async function getChampionIdFromLobbyDOM() {
+  const selected = document.querySelector(
+    '.quick-play-loadout-selection-hitbox.selected .champion-slot-tile'
+  );
+  if (!selected) return null;
+
+  const src = selected.getAttribute('src') || '';
+  const match = src.match(/\/Characters\/([^/]+)\//i);
+  if (!match) return null;
+
+  const alias = match[1];
+  const summary = await loadChampionSummary();
+  if (!summary) return null;
+
+  const entry = summary.find(
+    c => c.alias && c.alias.toLowerCase() === alias.toLowerCase()
+  );
+  return entry ? entry.id : null;
+}

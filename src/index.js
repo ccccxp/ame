@@ -1,4 +1,5 @@
 import { CHAMP_SELECT_PHASES, POST_GAME_PHASES, IN_GAME_PHASES, IN_GAME_POLL_MS, POLL_INTERVAL_MS, CHROMA_BTN_CLASS } from './constants';
+import { ensureSwiftplayButton, removeSwiftplayButton, updateSwiftplayButtonState, unlockSwiftplayCarousel, isSwiftplaySkinPanelOpen } from './swiftplay';
 import { getMyChampionId, loadChampionSkins, resetSkinsCache, fetchJson } from './api';
 import { injectStyles, unlockSkinCarousel } from './styles';
 import { wsConnect, wsSend, isOverlayActive } from './websocket';
@@ -15,7 +16,11 @@ let pollTimer = null;
 let observer = null;
 let inChampSelect = false;
 let inGame = false;
+let inSwiftplay = false;
 let inGamePollTimer = null;
+let swiftplayPollTimer = null;
+let swiftplayObserver = null;
+let swiftplayPollRunning = false;
 let lastChampionId = null;
 let injectionTriggered = false;
 let pollRunning = false;
@@ -63,6 +68,41 @@ function startObserving() {
   pollUI();
 }
 
+function stopSwiftplayObserving() {
+  if (swiftplayObserver) { swiftplayObserver.disconnect(); swiftplayObserver = null; }
+  if (swiftplayPollTimer) { clearInterval(swiftplayPollTimer); swiftplayPollTimer = null; }
+  removeSwiftplayButton();
+}
+
+async function pollSwiftplayUI() {
+  if (!inSwiftplay) return;
+  if (swiftplayPollRunning) return;
+  swiftplayPollRunning = true;
+  try {
+    if (!isSwiftplaySkinPanelOpen()) {
+      removeSwiftplayButton();
+      return;
+    }
+    ensureSwiftplayButton();
+    unlockSwiftplayCarousel();
+    updateSwiftplayButtonState();
+  } finally {
+    swiftplayPollRunning = false;
+  }
+}
+
+function startSwiftplayObserving() {
+  if (!document.body) {
+    setTimeout(startSwiftplayObserving, 250);
+    return;
+  }
+  stopSwiftplayObserving();
+  swiftplayObserver = new MutationObserver(pollSwiftplayUI);
+  swiftplayObserver.observe(document.body, { childList: true, subtree: true });
+  swiftplayPollTimer = setInterval(pollSwiftplayUI, POLL_INTERVAL_MS);
+  pollSwiftplayUI();
+}
+
 export function init(context) {
   injectStyles();
   wsConnect();
@@ -92,6 +132,9 @@ export function init(context) {
     const wasInChampSelect = inChampSelect;
     inChampSelect = CHAMP_SELECT_PHASES.includes(phase);
 
+    const wasInSwiftplay = inSwiftplay;
+    inSwiftplay = phase === 'Lobby';
+
     const wasInGame = inGame;
     inGame = IN_GAME_PHASES.includes(phase);
 
@@ -102,6 +145,7 @@ export function init(context) {
       injectionTriggered = false;
       setAppliedSkinName(null);
       resetAutoApply();
+      stopSwiftplayObserving();
       startObserving();
       fetchAndLogGameflow();
       fetchAndLogTimer();
@@ -109,6 +153,13 @@ export function init(context) {
       stopObserving();
       forceApplyIfNeeded().then(() => resetAutoApply());
       injectionTriggered = true;
+    }
+
+    if (inSwiftplay && !wasInSwiftplay) {
+      setAppliedSkinName(null);
+      startSwiftplayObserving();
+    } else if (!inSwiftplay && wasInSwiftplay) {
+      stopSwiftplayObserving();
     }
 
     if (inGame && !wasInGame) {

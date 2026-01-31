@@ -1,4 +1,4 @@
-import { STYLE_ID, BUTTON_ID, CHROMA_BTN_CLASS, CHROMA_PANEL_ID, IN_GAME_CONTAINER_ID } from './constants';
+import { STYLE_ID, BUTTON_ID, SWIFTPLAY_BUTTON_ID, CHROMA_BTN_CLASS, CHROMA_PANEL_ID, IN_GAME_CONTAINER_ID } from './constants';
 
 export function injectStyles() {
   if (document.getElementById(STYLE_ID)) return;
@@ -158,6 +158,24 @@ export function injectStyles() {
       box-shadow: 0 0 4px #c89b3c;
       z-index: 99999;
       pointer-events: none;
+    }
+    .quick-play-skin-select-component .skin-purchase-button-container {
+      display: none !important;
+      visibility: hidden !important;
+      pointer-events: none !important;
+    }
+    .quick-play-skin-select-component .thumbnail-wrapper.unowned,
+    .quick-play-skin-select-component .thumbnail-wrapper.unowned .skin-thumbnail-img {
+      opacity: 1 !important;
+      filter: none !important;
+      -webkit-filter: none !important;
+      pointer-events: auto !important;
+    }
+    #${SWIFTPLAY_BUTTON_ID}[disabled] {
+      opacity: 0.4 !important;
+      pointer-events: none !important;
+      cursor: default !important;
+      filter: grayscale(0.5) !important;
     }
   `;
   document.head.appendChild(style);
