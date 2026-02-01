@@ -23,9 +23,8 @@ export async function joinRoom() {
   const gameflow = await fetchJson('/lol-gameflow/v1/session');
   if (!gameflow) return;
 
-  const platformId = gameflow.map?.platformId;
   const gameId = gameflow.gameData?.gameId;
-  if (!platformId || !gameId) return;
+  if (!gameId) return;
 
   const summoner = await fetchJson('/lol-summoner/v1/current-summoner');
   if (!summoner?.puuid) return;
@@ -37,7 +36,7 @@ export async function joinRoom() {
     .map(p => p.puuid)
     .filter(p => p && p !== '' && p !== summoner.puuid);
 
-  const roomKey = `${platformId}:${gameId}`;
+  const roomKey = `${gameId}`;
 
   wsSend({
     type: 'roomPartyJoin',

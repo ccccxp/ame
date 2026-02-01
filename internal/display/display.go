@@ -25,6 +25,7 @@ var (
 	status  string
 	skin    string
 	overlay string
+	party   string
 	logs    []logEntry
 	paused  bool
 	started bool
@@ -56,6 +57,7 @@ func Init(ver string) {
 	status = "Waiting for client"
 	skin = "None"
 	overlay = "Inactive"
+	party = "Off"
 	logs = nil
 	started = true
 	paused = false
@@ -85,6 +87,15 @@ func SetSkin(name, chroma string) {
 	} else {
 		skin = name
 	}
+	render()
+}
+
+// SetParty updates the room party status and re-renders.
+func SetParty(s string) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	party = s
 	render()
 }
 
@@ -145,6 +156,7 @@ func render() {
 	b.WriteString(fmt.Sprintf("  %-10s%s\n", "Status", status))
 	b.WriteString(fmt.Sprintf("  %-10s%s\n", "Skin", skin))
 	b.WriteString(fmt.Sprintf("  %-10s%s\n", "Overlay", overlay))
+	b.WriteString(fmt.Sprintf("  %-10s%s\n", "Party", party))
 	b.WriteString("\n")
 	b.WriteString("  Log\n")
 	b.WriteString("  ---\n")

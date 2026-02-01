@@ -81,6 +81,9 @@ func (rs *RoomState) Join(roomKey, puuid string, teamPuuids []string) {
 	rs.cancelPoll = cancel
 	rs.mu.Unlock()
 
+	display.SetParty(fmt.Sprintf("In room (%d teammates)", len(teamPuuids)))
+	display.Log(fmt.Sprintf("Room key: %s", roomKey))
+
 	// Register with CF Worker
 	rs.postJoin()
 
@@ -114,6 +117,8 @@ func (rs *RoomState) Leave() {
 	}
 	rs.teammates = nil
 	rs.mu.Unlock()
+
+	display.SetParty("Off")
 
 	// Best-effort leave
 	go rs.postLeave()
@@ -246,6 +251,15 @@ func (rs *RoomState) pollLoop(ctx context.Context) {
 			copy(newTeammates, rs.teammates)
 			onUpdate := rs.OnUpdate
 			rs.mu.Unlock()
+
+			// Update display if teammate count changed
+			if len(newTeammates) != len(oldTeammates) {
+				if len(newTeammates) > 0 {
+					display.SetParty(fmt.Sprintf("Active (%d Ame users)", len(newTeammates)))
+				} else {
+					display.SetParty("In room (waiting)")
+				}
+			}
 
 			// Notify plugin of updates
 			if onUpdate != nil {
