@@ -17,96 +17,64 @@ import (
 )
 
 const SKIN_BASE_URL = "https://raw.githubusercontent.com/Alban1911/LeagueSkins/main/skins"
-const CDRAGON_BASE_URL = "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champions"
-
-// CommunityDragon data structures for English name resolution
-type cdragonChroma struct {
-	ID   int    `json:"id"`
-	Name string `json:"name"`
-}
-
-type cdragonSkin struct {
-	ID      int             `json:"id"`
-	Name    string          `json:"name"`
-	Chromas []cdragonChroma `json:"chromas"`
-}
-
-type cdragonChampion struct {
-	Name  string        `json:"name"`
-	Skins []cdragonSkin `json:"skins"`
-}
+const SKIN_IDS_URL = "https://raw.githubusercontent.com/Alban1911/LeagueSkins/refs/heads/main/resources/en/skin_ids.json"
 
 var (
-	champCache   = make(map[string]*cdragonChampion)
-	champCacheMu sync.Mutex
+	skinIDsCache   map[string]string
+	skinIDsCacheMu sync.Mutex
 )
 
-// fetchChampionEnglish fetches English champion data from CommunityDragon and caches it
-func fetchChampionEnglish(championID string) (*cdragonChampion, error) {
-	champCacheMu.Lock()
-	if cached, ok := champCache[championID]; ok {
-		champCacheMu.Unlock()
-		return cached, nil
+// fetchSkinIDs fetches the skin ID-to-name mapping and caches it
+func fetchSkinIDs() (map[string]string, error) {
+	skinIDsCacheMu.Lock()
+	if skinIDsCache != nil {
+		skinIDsCacheMu.Unlock()
+		return skinIDsCache, nil
 	}
-	champCacheMu.Unlock()
+	skinIDsCacheMu.Unlock()
 
-	fetchURL := fmt.Sprintf("%s/%s.json", CDRAGON_BASE_URL, championID)
-	resp, err := http.Get(fetchURL)
+	resp, err := http.Get(SKIN_IDS_URL)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("CommunityDragon returned status %d", resp.StatusCode)
+		return nil, fmt.Errorf("skin IDs returned status %d", resp.StatusCode)
 	}
 
-	var data cdragonChampion
+	var data map[string]string
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
 		return nil, err
 	}
 
-	champCacheMu.Lock()
-	champCache[championID] = &data
-	champCacheMu.Unlock()
+	skinIDsCacheMu.Lock()
+	skinIDsCache = data
+	skinIDsCacheMu.Unlock()
 
-	return &data, nil
+	return data, nil
 }
 
-// resolveEnglishNames looks up English champion/skin/chroma names from CommunityDragon
+// resolveEnglishNames looks up English champion/skin/chroma names from the skin IDs mapping
 func resolveEnglishNames(championID, skinID, baseSkinID string) (champName, skinName, chromaName string) {
-	data, err := fetchChampionEnglish(championID)
+	data, err := fetchSkinIDs()
 	if err != nil {
 		return "", "", ""
 	}
 
-	champName = data.Name
+	// Champion name is the base skin entry (championID * 1000)
+	championIDNum, _ := strconv.Atoi(championID)
+	champName = data[strconv.Itoa(championIDNum*1000)]
 
-	skinIDNum, _ := strconv.Atoi(skinID)
 	baseSkinIDNum, _ := strconv.Atoi(baseSkinID)
 
 	if baseSkinID != "" && baseSkinIDNum != 0 {
 		// Chroma: baseSkinID is the parent skin, skinID is the chroma
-		for _, s := range data.Skins {
-			if s.ID == baseSkinIDNum {
-				skinName = s.Name
-				for _, c := range s.Chromas {
-					if c.ID == skinIDNum {
-						chromaName = c.Name
-						break
-					}
-				}
-				break
-			}
-		}
+		skinName = data[baseSkinID]
+		chromaName = data[skinID]
 	} else {
 		// Non-chroma: skinID is the skin itself
-		for _, s := range data.Skins {
-			if s.ID == skinIDNum {
-				skinName = s.Name
-				break
-			}
-		}
+		skinName = data[skinID]
 	}
 
 	return
@@ -114,7 +82,7 @@ func resolveEnglishNames(championID, skinID, baseSkinID string) (champName, skin
 
 // Download downloads a skin file (.fantome or .zip)
 func Download(championID, skinID, baseSkinID, championName, skinName, chromaName string) (string, error) {
-	// Resolve English names from CommunityDragon (overrides localized names from client)
+	// Resolve English names from skin IDs mapping (overrides localized names from client)
 	enChamp, enSkin, enChroma := resolveEnglishNames(championID, skinID, baseSkinID)
 	if enChamp != "" {
 		championName = enChamp
