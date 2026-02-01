@@ -24,6 +24,9 @@ const settingsListeners = {};
 let autoSelectRolesCache = {};
 const autoSelectRolesListeners = [];
 
+// Room party: teammate update listeners
+const roomPartyListeners = [];
+
 /**
  * Register a listener for a boolean setting.
  * Fires immediately with cached value (if available) and on every update.
@@ -76,6 +79,19 @@ export function getAutoSelectRolesCache() {
   return autoSelectRolesCache;
 }
 
+/**
+ * Register a listener for room party teammate updates.
+ * Fires whenever the backend sends a roomPartyUpdate message.
+ * Returns an unsubscribe function.
+ */
+export function onRoomPartyUpdate(cb) {
+  roomPartyListeners.push(cb);
+  return () => {
+    const idx = roomPartyListeners.indexOf(cb);
+    if (idx !== -1) roomPartyListeners.splice(idx, 1);
+  };
+}
+
 function applyAutoSelectRoles(roles) {
   autoSelectRolesCache = roles || {};
   autoSelectRolesListeners.forEach(cb => cb(autoSelectRolesCache));
@@ -113,6 +129,8 @@ export function wsConnect() {
           }
           overlayActive = !!msg.overlayActive;
           console.log('[ame] State from server:', overlayActive ? 'active' : 'inactive', lastApplyPayload);
+        } else if (msg.type === 'roomPartyUpdate') {
+          roomPartyListeners.forEach(cb => cb(msg.teammates || []));
         } else if (msg.type === 'gamePath') {
           if (gamePathCallback) {
             gamePathCallback(msg.path || '');

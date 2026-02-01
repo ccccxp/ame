@@ -6,6 +6,7 @@ import { toastError } from './toast';
 import { getAppliedSkinName, setAppliedSkinName, getSelectedChroma } from './state';
 import { ensureElement, removeElement } from './dom';
 import { createButton } from './components';
+import { notifySkinChange } from './roomParty';
 
 export function ensureApplyButton() {
   ensureElement(BUTTON_ID, '.toggle-ability-previews-button-container', (container) => {
@@ -74,8 +75,10 @@ async function onApplyClick() {
       type: 'apply', championId, skinId: chroma.id, baseSkinId: chroma.baseSkinId,
       championName: champName, skinName: chroma.baseSkinName || skin.name, chromaName: chroma.chromaName,
     });
+    notifySkinChange(championId, chroma.id, chroma.baseSkinId, champName, chroma.baseSkinName || skin.name, chroma.chromaName);
   } else {
     wsSendApply({ type: 'apply', championId, skinId: skin.id, championName: champName, skinName: skin.name });
+    notifySkinChange(championId, skin.id, '', champName, skin.name, '');
   }
   setAppliedSkinName(skinName);
   setButtonState('Applied', true);

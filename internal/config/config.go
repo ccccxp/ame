@@ -41,6 +41,7 @@ type Settings struct {
 	AutoUpdate       bool                  `json:"autoUpdate"`
 	AutoSelect       bool                  `json:"autoSelect"`
 	AutoSelectRoles  map[string]RoleConfig `json:"autoSelectRoles"`
+	RoomParty        bool                  `json:"roomParty"`
 }
 
 // Init loads settings from disk.
@@ -211,6 +212,21 @@ func AutoSelectRoles() map[string]RoleConfig {
 		cp[k] = RoleConfig{Picks: picks, Bans: bans}
 	}
 	return cp
+}
+
+// RoomParty returns the current room-party setting.
+func RoomParty() bool {
+	mu.RLock()
+	defer mu.RUnlock()
+	return settings.RoomParty
+}
+
+// SetRoomParty updates and persists the room-party setting.
+func SetRoomParty(enabled bool) error {
+	mu.Lock()
+	defer mu.Unlock()
+	settings.RoomParty = enabled
+	return save()
 }
 
 // SetAutoSelectRole updates and persists the pick/ban config for a single role.

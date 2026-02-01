@@ -1,4 +1,4 @@
-import { STYLE_ID, BUTTON_ID, SWIFTPLAY_BUTTON_ID, CHROMA_BTN_CLASS, CHROMA_PANEL_ID, IN_GAME_CONTAINER_ID } from './constants';
+import { STYLE_ID, BUTTON_ID, SWIFTPLAY_BUTTON_ID, CHROMA_BTN_CLASS, CHROMA_PANEL_ID, IN_GAME_CONTAINER_ID, ROOM_PARTY_INDICATOR_CLASS } from './constants';
 
 export function injectStyles() {
   if (document.getElementById(STYLE_ID)) return;
@@ -345,6 +345,31 @@ export function injectStyles() {
       pointer-events: none !important;
       cursor: default !important;
       filter: grayscale(0.5) !important;
+    }
+    .${ROOM_PARTY_INDICATOR_CLASS} {
+      position: absolute;
+      bottom: -2px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 50;
+      background: rgba(30, 35, 40, 0.9);
+      border: 1px solid #c89b3c;
+      border-radius: 3px;
+      padding: 1px 6px;
+      font-size: 10px;
+      color: #c8aa6e;
+      white-space: nowrap;
+      pointer-events: none;
+      max-width: 140px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .ame-settings-description {
+      margin-top: 8px;
+      font-family: var(--font-body);
+      font-size: 11px;
+      color: #5b5a56;
+      line-height: 1.4;
     }
   `;
   document.head.appendChild(style);

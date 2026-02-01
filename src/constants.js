@@ -26,3 +26,4 @@ export const AUTO_SELECT_ROLES = [
 ];
 export const SWIFTPLAY_BUTTON_ID = 'ame-swiftplay-apply-btn';
 export const STYLE_ID = 'ame-styles';
+export const ROOM_PARTY_INDICATOR_CLASS = 'ame-room-party-indicator';

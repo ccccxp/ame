@@ -249,6 +249,12 @@ function buildPanel() {
             buildToggle('ameBenchSwapSkipCooldown', 'Skip cooldown (experimental)', 'benchSwapSkipCooldown'),
           ),
         ),
+        buildSection('Room Party (Experiment)',
+          buildToggle('ameRoomParty', 'Share skins with teammates using Ame', 'roomParty'),
+          el('div', { class: 'ame-settings-description' },
+            'When enabled, teammates also running Ame can see and use each other\'s modded skins in game.'
+          ),
+        ),
         buildSection('Auto Champion Select',
           buildAutoSelectSection(),
         ),

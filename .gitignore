@@ -34,3 +34,6 @@ nul
 server/node_modules/
 server/bun.lockb
 server/dist/
+
+# Worker (Cloudflare)
+worker/node_modules/

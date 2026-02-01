@@ -13,6 +13,7 @@ import { ensureBenchSwap, cleanupBenchSwap, loadBenchSwapSetting } from './bench
 import { loadAutoSelectSetting, handleChampSelectSession, resetAutoSelect } from './autoSelect';
 import { setLastChampionId, setAppliedSkinName, setOwnedSkinIds, resetOwnedSkins, getOwnedSkinChampionId, isOwnedSkin, getPendingForceDefault, setPendingForceDefault } from './state';
 import { readCurrentSkin, findSkinByName } from './skin';
+import { joinRoom, leaveRoom, loadRoomPartySetting } from './roomParty';
 
 let pollTimer = null;
 let observer = null;
@@ -160,6 +161,7 @@ export function init(context) {
   loadAutoAcceptSetting();
   loadBenchSwapSetting();
   loadAutoSelectSetting();
+  loadRoomPartySetting();
 
   context.socket.observe('/lol-champ-select/v1/session', (event) => {
     if (event.eventType === 'Delete' || !inChampSelect) return;
@@ -207,10 +209,12 @@ export function init(context) {
       startObserving();
       fetchAndLogGameflow();
       fetchAndLogTimer();
+      joinRoom();
     } else if (!inChampSelect && wasInChampSelect) {
       stopObserving();
       forceApplyIfNeeded().then(() => resetAutoApply());
       resetAutoSelect();
+      leaveRoom();
       injectionTriggered = true;
     }
 

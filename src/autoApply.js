@@ -8,6 +8,7 @@ import {
 } from './state';
 import { setButtonState } from './ui';
 import { PREFETCH_DEBOUNCE_MS } from './constants';
+import { notifySkinChange } from './roomParty';
 
 const AUTO_APPLY_STABLE_MS = 10000;
 const LOG = '[ame:auto]';
@@ -62,6 +63,7 @@ function debouncePrefetch(championId, skinName) {
     if (lastTrackedSkin === skinName && lastTrackedChampion === championId) {
       const champName = await getChampionName(championId);
       wsSend({ type: 'prefetch', championId, skinId: skin.id, championName: champName, skinName: skin.name });
+      notifySkinChange(championId, skin.id, '', champName, skin.name, '');
     }
   }, PREFETCH_DEBOUNCE_MS);
 }
@@ -244,8 +246,10 @@ async function triggerAutoApply() {
       type: 'apply', championId, skinId: startChroma.id, baseSkinId: startChroma.baseSkinId,
       championName: champName, skinName: startChroma.baseSkinName || skin.name, chromaName: startChroma.chromaName,
     });
+    notifySkinChange(championId, startChroma.id, startChroma.baseSkinId, champName, startChroma.baseSkinName || skin.name, startChroma.chromaName);
   } else {
     wsSendApply({ type: 'apply', championId, skinId: skin.id, championName: champName, skinName: skin.name });
+    notifySkinChange(championId, skin.id, '', champName, skin.name, '');
   }
 
   setAppliedSkinName(startSkin);

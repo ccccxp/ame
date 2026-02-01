@@ -14,6 +14,7 @@ import (
 	"github.com/hoangvu12/ame/internal/display"
 	"github.com/hoangvu12/ame/internal/game"
 	"github.com/hoangvu12/ame/internal/modtools"
+	"github.com/hoangvu12/ame/internal/roomparty"
 	"github.com/hoangvu12/ame/internal/skin"
 	"github.com/hoangvu12/ame/internal/startup"
 	"github.com/hoangvu12/ame/internal/suspend"
@@ -74,6 +75,31 @@ type AutoSelectRoleMessage struct {
 	Bans  []int  `json:"bans"`
 }
 
+// RoomPartyJoinMessage is sent by the plugin when champ select starts with room party enabled
+type RoomPartyJoinMessage struct {
+	Type       string   `json:"type"`
+	RoomKey    string   `json:"roomKey"`
+	Puuid      string   `json:"puuid"`
+	TeamPuuids []string `json:"teamPuuids"`
+}
+
+// RoomPartySkinMessage is sent by the plugin when the user's skin selection changes
+type RoomPartySkinMessage struct {
+	Type         string      `json:"type"`
+	ChampionID   interface{} `json:"championId"`
+	SkinID       interface{} `json:"skinId"`
+	BaseSkinID   interface{} `json:"baseSkinId,omitempty"`
+	ChampionName string      `json:"championName,omitempty"`
+	SkinName     string      `json:"skinName,omitempty"`
+	ChromaName   string      `json:"chromaName,omitempty"`
+}
+
+// RoomPartyUpdateMessage is sent TO the plugin with teammate info
+type RoomPartyUpdateMessage struct {
+	Type      string             `json:"type"`
+	Teammates []roomparty.Member `json:"teammates"`
+}
+
 // IncomingMessage is used for parsing the message type first
 type IncomingMessage struct {
 	Type string `json:"type"`
@@ -116,7 +142,10 @@ var stateMu sync.Mutex
 
 // Prebuild state — tracks overlay pre-built during champion select
 var overlayBuildMu sync.Mutex
-var prebuiltSkinID string
+var prebuiltModKey string
+
+// Room party state
+var roomState = roomparty.NewRoomState()
 
 // sendStatus sends a status message to the WebSocket client
 func sendStatus(conn *websocket.Conn, status, message string) {
@@ -233,7 +262,14 @@ func handleApply(conn *websocket.Conn, championID, skinID, baseSkinID, championN
 
 	// Build overlay (or reuse pre-built one from prefetch).
 	overlayBuildMu.Lock()
-	prebuilt := prebuiltSkinID == skinID
+
+	// Compute mod key: includes own skin + teammate skins if room party is active
+	currentModKey := skinID
+	if roomState.IsActive() {
+		currentModKey = roomState.ComputeModKey(skinID)
+	}
+
+	prebuilt := prebuiltModKey == currentModKey
 	if prebuilt {
 		// Verify overlay dir still exists
 		configCheck := filepath.Join(config.OverlayDir, "cslol-config.json")
@@ -242,9 +278,9 @@ func handleApply(conn *websocket.Conn, championID, skinID, baseSkinID, championN
 		}
 	}
 	if prebuilt {
-		prebuiltSkinID = ""
+		prebuiltModKey = ""
 	} else {
-		prebuiltSkinID = ""
+		prebuiltModKey = ""
 		os.RemoveAll(config.ModsDir)
 		modSubDir := filepath.Join(config.ModsDir, fmt.Sprintf("skin_%s", skinID))
 		os.MkdirAll(modSubDir, os.ModePerm)
@@ -255,10 +291,20 @@ func handleApply(conn *websocket.Conn, championID, skinID, baseSkinID, championN
 			return
 		}
 
+		// Download and extract teammate skins if room party is active
+		if roomState.IsActive() {
+			roomState.DownloadTeammateSkins()
+		}
+
 		os.RemoveAll(config.OverlayDir)
 		os.MkdirAll(config.OverlayDir, os.ModePerm)
 
+		// Build mod list: own skin + teammate skins
 		modName := fmt.Sprintf("skin_%s", skinID)
+		if roomState.IsActive() {
+			modName = roomState.GetAllModNames(skinID)
+		}
+
 		success, exitCode := modtools.RunMkOverlay(config.ModsDir, config.OverlayDir, gameDir, modName)
 
 		if !success {
@@ -323,8 +369,14 @@ func handlePrefetch(conn *websocket.Conn, championID, skinID, baseSkinID, champi
 	overlayBuildMu.Lock()
 	defer overlayBuildMu.Unlock()
 
-	// Skip if already pre-built for this skin
-	if prebuiltSkinID == skinID {
+	// Compute mod key for cache comparison
+	currentModKey := skinID
+	if roomState.IsActive() {
+		currentModKey = roomState.ComputeModKey(skinID)
+	}
+
+	// Skip if already pre-built for this exact set of skins
+	if prebuiltModKey == currentModKey {
 		return
 	}
 
@@ -336,16 +388,26 @@ func handlePrefetch(conn *websocket.Conn, championID, skinID, baseSkinID, champi
 		return
 	}
 
+	// Download and extract teammate skins if room party is active
+	if roomState.IsActive() {
+		roomState.DownloadTeammateSkins()
+	}
+
 	os.RemoveAll(config.OverlayDir)
 	os.MkdirAll(config.OverlayDir, os.ModePerm)
 
+	// Build mod list: own skin + teammate skins
 	modName := fmt.Sprintf("skin_%s", skinID)
+	if roomState.IsActive() {
+		modName = roomState.GetAllModNames(skinID)
+	}
+
 	success, _ := modtools.RunMkOverlay(config.ModsDir, config.OverlayDir, gameDir, modName)
 	if !success {
 		return
 	}
 
-	prebuiltSkinID = skinID
+	prebuiltModKey = currentModKey
 	display.Log("Skin ready")
 }
 
@@ -354,8 +416,11 @@ func HandleCleanup() {
 	modtools.KillModTools()
 	os.RemoveAll(config.OverlayDir)
 
+	// Leave room party
+	roomState.Leave()
+
 	overlayBuildMu.Lock()
-	prebuiltSkinID = ""
+	prebuiltModKey = ""
 	overlayBuildMu.Unlock()
 
 	stateMu.Lock()
@@ -369,6 +434,25 @@ func HandleCleanup() {
 
 	display.SetSkin("", "")
 	display.SetOverlay("Inactive")
+}
+
+// broadcastRoomUpdate sends room party teammate info to all connected clients.
+func broadcastRoomUpdate(teammates []roomparty.Member) {
+	msg := RoomPartyUpdateMessage{
+		Type:      "roomPartyUpdate",
+		Teammates: teammates,
+	}
+	data, _ := json.Marshal(msg)
+
+	clientsMu.Lock()
+	defer clientsMu.Unlock()
+	for conn := range clients {
+		conn.WriteMessage(websocket.TextMessage, data)
+	}
+}
+
+func init() {
+	roomState.OnUpdate = broadcastRoomUpdate
 }
 
 // handleConnection handles a single WebSocket connection
@@ -451,14 +535,15 @@ func handleConnection(conn *websocket.Conn) {
 			s := config.Get()
 			roles := config.AutoSelectRoles()
 			resp := map[string]interface{}{
-				"type":             "settings",
-				"autoAccept":       s.AutoAccept,
+				"type":                  "settings",
+				"autoAccept":            s.AutoAccept,
 				"benchSwap":             s.BenchSwap,
-			"benchSwapSkipCooldown": s.BenchSwapSkipCooldown,
-				"startWithWindows": s.StartWithWindows,
-				"autoUpdate":       s.AutoUpdate,
-				"autoSelect":       s.AutoSelect,
-				"autoSelectRoles":  roles,
+				"benchSwapSkipCooldown": s.BenchSwapSkipCooldown,
+				"startWithWindows":      s.StartWithWindows,
+				"autoUpdate":            s.AutoUpdate,
+				"autoSelect":            s.AutoSelect,
+				"autoSelectRoles":       roles,
+				"roomParty":             s.RoomParty,
 			}
 			data, _ := json.Marshal(resp)
 			conn.WriteMessage(websocket.TextMessage, data)
@@ -567,6 +652,51 @@ func handleConnection(conn *websocket.Conn) {
 				data, _ := json.Marshal(resp)
 				conn.WriteMessage(websocket.TextMessage, data)
 			}
+
+		case "setRoomParty":
+			var msg BoolSettingMessage
+			if err := json.Unmarshal(message, &msg); err != nil {
+				continue
+			}
+			if err := config.SetRoomParty(msg.Enabled); err != nil {
+				sendStatus(conn, "error", "Failed to save room party setting")
+			} else {
+				resp := BoolSettingMessage{Type: "roomParty", Enabled: msg.Enabled}
+				data, _ := json.Marshal(resp)
+				conn.WriteMessage(websocket.TextMessage, data)
+			}
+
+		case "roomPartyJoin":
+			var msg RoomPartyJoinMessage
+			if err := json.Unmarshal(message, &msg); err != nil {
+				continue
+			}
+			if !config.RoomParty() {
+				continue
+			}
+			roomState.Join(msg.RoomKey, msg.Puuid, msg.TeamPuuids)
+			display.Log("Room Party: joined room")
+
+		case "roomPartySkin":
+			var msg RoomPartySkinMessage
+			if err := json.Unmarshal(message, &msg); err != nil {
+				continue
+			}
+			if !config.RoomParty() {
+				continue
+			}
+			roomState.UpdateSkin(roomparty.SkinInfo{
+				ChampionID:   toString(msg.ChampionID),
+				SkinID:       toString(msg.SkinID),
+				BaseSkinID:   toString(msg.BaseSkinID),
+				ChampionName: msg.ChampionName,
+				SkinName:     msg.SkinName,
+				ChromaName:   msg.ChromaName,
+			})
+
+		case "roomPartyLeave":
+			roomState.Leave()
+			display.Log("Room Party: left room")
 
 		case "query":
 			stateMu.Lock()
