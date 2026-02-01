@@ -169,6 +169,9 @@ func restartViaLauncher() {
 	}
 
 	cmd := exec.Command(launcherPath, args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP,
 	}
@@ -208,11 +211,36 @@ func disableQuickEdit() {
 	setConsoleMode.Call(uintptr(handle), uintptr(mode))
 }
 
-// clearConsole clears the console window
+// clearConsole clears the console window using the Windows console API directly
 func clearConsole() {
-	cmd := exec.Command("cmd", "/c", "cls")
-	cmd.Stdout = os.Stdout
-	cmd.Run()
+	kernel32 := syscall.NewLazyDLL("kernel32.dll")
+	getInfo := kernel32.NewProc("GetConsoleScreenBufferInfo")
+	fillChar := kernel32.NewProc("FillConsoleOutputCharacterW")
+	fillAttr := kernel32.NewProc("FillConsoleOutputAttribute")
+	setCursor := kernel32.NewProc("SetConsoleCursorPosition")
+
+	handle, _ := syscall.GetStdHandle(syscall.STD_OUTPUT_HANDLE)
+
+	type coord struct{ X, Y int16 }
+	type smallRect struct{ Left, Top, Right, Bottom int16 }
+	type bufferInfo struct {
+		Size       coord
+		Cursor     coord
+		Attrs      uint16
+		Window     smallRect
+		MaxSize    coord
+	}
+
+	var info bufferInfo
+	getInfo.Call(uintptr(handle), uintptr(unsafe.Pointer(&info)))
+
+	size := uintptr(info.Size.X) * uintptr(info.Size.Y)
+	var written uint32
+	origin := uintptr(0) // coord{0,0} packed as uint32
+
+	fillChar.Call(uintptr(handle), uintptr(' '), size, origin, uintptr(unsafe.Pointer(&written)))
+	fillAttr.Call(uintptr(handle), uintptr(info.Attrs), size, origin, uintptr(unsafe.Pointer(&written)))
+	setCursor.Call(uintptr(handle), origin)
 }
 
 // promptSettings shows an interactive settings menu in the console
@@ -302,6 +330,10 @@ func runLauncher() {
 	for _, arg := range os.Args[1:] {
 		args = append(args, arg)
 	}
+
+	// Clear console before starting core so stale output from a previous
+	// update cycle is removed.
+	clearConsole()
 
 	corePath := updater.CorePath()
 	cmd := exec.Command(corePath, args...)

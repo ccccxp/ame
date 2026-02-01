@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/hoangvu12/ame/internal/config"
 )
@@ -235,13 +236,29 @@ func ApplyPendingUpdate() bool {
 		return false
 	}
 
-	// Remove old core (ignore error — may not exist on first run)
-	os.Remove(CORE_FILE)
+	// Remove old core — retry because the previous core process may not have
+	// fully released its file lock yet (Windows keeps exe files locked briefly
+	// after process exit).
+	const maxRetries = 10
+	for i := 0; i < maxRetries; i++ {
+		err := os.Remove(CORE_FILE)
+		if err == nil || os.IsNotExist(err) {
+			break
+		}
+		if i < maxRetries-1 {
+			fmt.Printf("  Waiting for old process to release... (%d/%d)\n", i+1, maxRetries)
+			time.Sleep(500 * time.Millisecond)
+		} else {
+			fmt.Printf("  ! Could not remove old core after %d attempts: %v\n", maxRetries, err)
+			return false
+		}
+	}
 
 	// Move update → core
 	if err := os.Rename(UPDATE_FILE, CORE_FILE); err != nil {
 		// Rename failed (cross-device?), try copy+delete
 		if copyErr := copyFile(UPDATE_FILE, CORE_FILE); copyErr != nil {
+			fmt.Printf("  ! Failed to apply update: %v\n", copyErr)
 			return false
 		}
 		os.Remove(UPDATE_FILE)
