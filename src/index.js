@@ -15,6 +15,7 @@ import { setLastChampionId, setAppliedSkinName, setOwnedSkinIds, resetOwnedSkins
 import { readCurrentSkin, findSkinByName } from './skin';
 import { joinRoom, leaveRoom, loadRoomPartySetting } from './roomParty';
 
+
 let pollTimer = null;
 let observer = null;
 let inChampSelect = false;
@@ -175,6 +176,7 @@ export function init(context) {
       resetSkinsCache();
       resetOwnedSkins();
     }
+    joinRoom();
   });
 
   function handlePhase(phase) {

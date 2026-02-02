@@ -5,6 +5,7 @@ import { ROOM_PARTY_INDICATOR_CLASS } from './constants';
 
 let enabled = false;
 let joined = false;
+let joining = false;
 let currentTeammates = [];
 let unsubUpdate = null;
 
@@ -13,44 +14,56 @@ export function loadRoomPartySetting() {
     enabled = v;
     if (!v && joined) {
       leaveRoom();
+    } else if (v && !joined) {
+      joinRoom();
     }
   });
 }
 
 export async function joinRoom() {
-  if (!enabled || joined) return;
+  if (!enabled || joined || joining) {
+    console.log('[ame] joinRoom skipped:', !enabled ? 'not enabled' : joined ? 'already joined' : 'join in progress');
+    return;
+  }
+  joining = true;
 
-  const gameflow = await fetchJson('/lol-gameflow/v1/session');
-  if (!gameflow) return;
+  try {
+    const gameflow = await fetchJson('/lol-gameflow/v1/session');
+    if (!gameflow) { console.log('[ame] joinRoom: no gameflow session'); return; }
 
-  const gameId = gameflow.gameData?.gameId;
-  if (!gameId) return;
+    const gameId = gameflow.gameData?.gameId;
+    if (!gameId) { console.log('[ame] joinRoom: no gameId'); return; }
 
-  const summoner = await fetchJson('/lol-summoner/v1/current-summoner');
-  if (!summoner?.puuid) return;
+    const summoner = await fetchJson('/lol-summoner/v1/current-summoner');
+    if (!summoner?.puuid) { console.log('[ame] joinRoom: no puuid'); return; }
 
-  const session = await fetchJson('/lol-champ-select/v1/session');
-  if (!session?.myTeam) return;
+    const session = await fetchJson('/lol-champ-select/v1/session');
+    if (!session?.myTeam) { console.log('[ame] joinRoom: no myTeam'); return; }
 
-  const teamPuuids = session.myTeam
-    .map(p => p.puuid)
-    .filter(p => p && p !== '' && p !== summoner.puuid);
+    const teamPuuids = session.myTeam
+      .map(p => p.puuid)
+      .filter(p => p && p !== '' && p !== summoner.puuid);
 
-  const roomKey = `${gameId}`;
+    const roomKey = `${gameId}`;
 
-  wsSend({
-    type: 'roomPartyJoin',
-    roomKey,
-    puuid: summoner.puuid,
-    teamPuuids,
-  });
+    console.log('[ame] joinRoom: joining room', roomKey, 'with', teamPuuids.length, 'teammates');
 
-  joined = true;
+    wsSend({
+      type: 'roomPartyJoin',
+      roomKey,
+      puuid: summoner.puuid,
+      teamPuuids,
+    });
 
-  unsubUpdate = onRoomPartyUpdate((teammates) => {
-    currentTeammates = teammates;
-    renderTeammateIndicators();
-  });
+    joined = true;
+
+    unsubUpdate = onRoomPartyUpdate((teammates) => {
+      currentTeammates = teammates;
+      renderTeammateIndicators();
+    });
+  } finally {
+    joining = false;
+  }
 }
 
 export function notifySkinChange(championId, skinId, baseSkinId, championName, skinName, chromaName) {
