@@ -18,6 +18,7 @@ import (
 	"github.com/hoangvu12/ame/internal/config"
 	"github.com/hoangvu12/ame/internal/display"
 	"github.com/hoangvu12/ame/internal/game"
+	"github.com/hoangvu12/ame/internal/lcu"
 	"github.com/hoangvu12/ame/internal/server"
 	"github.com/hoangvu12/ame/internal/setup"
 	"github.com/hoangvu12/ame/internal/startup"
@@ -419,6 +420,14 @@ func main() {
 		setup.SetupPlugin(setupConfig.PluginURL)
 		updater.SaveVersion(Version)
 		updater.CleanupUpdateFile()
+
+		// Restart League Client so it loads the updated plugin
+		if lcu.IsClientRunning() {
+			fmt.Println("  Restarting League Client...")
+			if err := lcu.RestartClient(); err != nil {
+				fmt.Printf("  ! Could not restart client: %v\n", err)
+			}
+		}
 	}
 
 	// Check for updates (auto-applies when minimized or autoUpdate is on)
