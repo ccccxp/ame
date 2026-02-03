@@ -8,6 +8,7 @@ import { applyChatStatus } from './chatStatus';
 const NAV_TITLE_CLASS = 'lol-settings-nav-title';
 const AME_NAV_NAME = 'ame-settings';
 const AME_PANEL_CLASS = 'ame-settings-panel';
+const UNINSTALL_DIALOG_ID = 'ame-uninstall-dialog';
 
 let settingsObserver = null;
 let injected = false;
@@ -262,6 +263,48 @@ function buildChatStatusSection() {
   );
 }
 
+function showUninstallDialog() {
+  if (document.getElementById(UNINSTALL_DIALOG_ID)) return;
+
+  const modal = el('div', { id: UNINSTALL_DIALOG_ID, class: 'modal', style: { position: 'absolute', inset: '0px' } },
+    el('lol-uikit-full-page-backdrop', {
+      class: 'backdrop',
+      style: { display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'absolute', inset: '0px' },
+    }),
+    el('div', {
+      class: 'dialog-confirm',
+      style: { display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'absolute', inset: '0px' },
+    },
+      el('lol-uikit-dialog-frame', { class: 'dialog-frame', orientation: 'bottom' },
+        el('div', { class: 'dialog-content' },
+          el('lol-uikit-content-block', { class: 'app-controls-exit-dialog', type: 'dialog-small' },
+            el('h4', null, 'UNINSTALL AME'),
+            el('hr', { class: 'heading-spacer' }),
+            el('p', null, 'Are you sure you want to uninstall Ame? This will remove all Ame files and settings.'),
+          ),
+        ),
+        el('lol-uikit-flat-button-group', { type: 'dialog-frame' },
+          el('lol-uikit-flat-button', {
+            tabindex: '1',
+            class: 'button-accept',
+            onClick: () => {
+              wsSend({ type: 'uninstall' });
+              modal.remove();
+            },
+          }, 'UNINSTALL'),
+          el('lol-uikit-flat-button', {
+            tabindex: '2',
+            class: 'button-decline',
+            onClick: () => modal.remove(),
+          }, 'CANCEL'),
+        ),
+      ),
+    ),
+  );
+
+  document.body.appendChild(modal);
+}
+
 function buildPanel() {
   const { container: flatInput, input } = createInput({
     placeholder: 'C:\\Riot Games\\League of Legends\\Game',
@@ -298,6 +341,12 @@ function buildPanel() {
         ),
         buildSection('Auto Champion Select',
           buildAutoSelectSection(),
+        ),
+        el('div', { class: 'ame-settings-toggle-row', style: { marginTop: '16px' } },
+          createButton('Uninstall Ame', {
+            class: 'ame-settings-uninstall',
+            onClick: () => showUninstallDialog(),
+          }),
         ),
       ),
     ),

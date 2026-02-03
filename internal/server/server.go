@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -15,7 +17,9 @@ import (
 	"github.com/hoangvu12/ame/internal/display"
 	"github.com/hoangvu12/ame/internal/game"
 	"github.com/hoangvu12/ame/internal/modtools"
+	"github.com/hoangvu12/ame/internal/lcu"
 	"github.com/hoangvu12/ame/internal/roomparty"
+	"github.com/hoangvu12/ame/internal/setup"
 	"github.com/hoangvu12/ame/internal/skin"
 	"github.com/hoangvu12/ame/internal/startup"
 	"github.com/hoangvu12/ame/internal/suspend"
@@ -172,6 +176,70 @@ func sendStatus(conn *websocket.Conn, status, message string) {
 		display.Log(message)
 	case "error":
 		display.Log("! " + message)
+	}
+}
+
+// OnUninstall is called after uninstall cleanup to trigger app exit.
+var OnUninstall func()
+
+// handleUninstall performs a full uninstall: deactivates Pengu, removes
+// files, schedules ame directory deletion, then exits.
+func handleUninstall(conn *websocket.Conn) {
+	display.Log("Uninstalling...")
+	hiddenAttr := &syscall.SysProcAttr{HideWindow: true}
+
+	// Check if Pengu is external before we touch the registry
+	isExternalPengu := setup.IsUsingExternalPengu()
+
+	// Deactivate Pengu (remove IFEO registry key)
+	setup.DeactivatePengu()
+
+	// Restart League Client so it releases core.dll and unloads Pengu
+	if lcu.IsClientRunning() {
+		display.Log("Restarting League Client...")
+		lcu.RestartClient()
+	}
+
+	// Remove startup scheduled task
+	startup.Disable()
+
+	// Clean up overlay state and kill mod-tools
+	HandleCleanup()
+
+	// Kill Pengu Loader process
+	kill := exec.Command("taskkill", "/F", "/IM", "Pengu Loader.exe")
+	kill.SysProcAttr = hiddenAttr
+	kill.Run()
+
+	// Handle Pengu cleanup
+	if isExternalPengu {
+		// External Pengu: only remove ame plugin, leave Pengu intact
+		os.RemoveAll(setup.GetPluginDir())
+	}
+
+	// Remove ame subdirectories we can delete now
+	os.RemoveAll(config.ToolsDir)
+	os.RemoveAll(config.SkinsDir)
+	os.RemoveAll(config.ModsDir)
+	os.RemoveAll(config.OverlayDir)
+
+	// Schedule deletion of ame directory after process exits.
+	// Retries for 30s to handle locked files (core.dll released after client restart).
+	ameDir := strings.ReplaceAll(config.AmeDir, "'", "''")
+	selfDestruct := exec.Command("powershell", "-NoProfile", "-WindowStyle", "Hidden",
+		"-Command", fmt.Sprintf(
+			"for ($i = 0; $i -lt 10; $i++) { Start-Sleep 3; Remove-Item -Recurse -Force '%s' -ErrorAction SilentlyContinue; if (!(Test-Path '%s')) { break } }",
+			ameDir, ameDir,
+		))
+	selfDestruct.SysProcAttr = &syscall.SysProcAttr{
+		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP,
+	}
+	selfDestruct.Start()
+
+	display.Log("Uninstall complete")
+
+	if OnUninstall != nil {
+		OnUninstall()
 	}
 }
 
@@ -480,6 +548,20 @@ func HandleCleanup() {
 	display.SetOverlay("Inactive")
 }
 
+// PendingRestart is set when the client should be prompted to restart.
+// Sent to new WebSocket clients on connect.
+var PendingRestart bool
+
+// BroadcastRestartPrompt sends a needsRestart message to all connected clients.
+func BroadcastRestartPrompt() {
+	data, _ := json.Marshal(map[string]string{"type": "needsRestart"})
+	clientsMu.Lock()
+	defer clientsMu.Unlock()
+	for conn := range clients {
+		conn.WriteMessage(websocket.TextMessage, data)
+	}
+}
+
 // broadcastRoomUpdate sends room party teammate info to all connected clients.
 func broadcastRoomUpdate(teammates []roomparty.Member) {
 	msg := RoomPartyUpdateMessage{
@@ -517,6 +599,12 @@ func handleConnection(conn *websocket.Conn) {
 	clientsMu.Unlock()
 	display.SetStatus("Connected")
 	display.Log("Client connected")
+
+	if PendingRestart {
+		PendingRestart = false
+		data, _ := json.Marshal(map[string]string{"type": "needsRestart"})
+		conn.WriteMessage(websocket.TextMessage, data)
+	}
 
 	for {
 		_, message, err := conn.ReadMessage()
@@ -758,6 +846,9 @@ func handleConnection(conn *websocket.Conn) {
 		case "roomPartyLeave":
 			roomState.Leave()
 			display.Log("Room Party: left room")
+
+		case "uninstall":
+			go handleUninstall(conn)
 
 		case "query":
 			stateMu.Lock()

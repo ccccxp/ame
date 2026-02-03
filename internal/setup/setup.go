@@ -187,8 +187,8 @@ func extractZip(zipPath, destDir string) error {
 	return nil
 }
 
-// isPenguActivated checks if Pengu Loader is activated via registry
-func isPenguActivated() bool {
+// IsPenguActivated checks if Pengu Loader is activated via registry
+func IsPenguActivated() bool {
 	cmd := exec.Command("reg", "query",
 		`HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\LeagueClientUx.exe`,
 		"/v", "Debugger")
@@ -197,24 +197,31 @@ func isPenguActivated() bool {
 	return err == nil
 }
 
-// launchPenguForActivation launches Pengu Loader and waits for user to close it
-func launchPenguForActivation() error {
-	penguExe := filepath.Join(PENGU_DIR, "Pengu Loader.exe")
-	if _, err := os.Stat(penguExe); os.IsNotExist(err) {
-		return err
+const ifeoKey = `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\LeagueClientUx.exe`
+
+// ActivatePengu sets the IFEO Debugger registry value so PenguLoader
+// injects into LeagueClientUx.exe on launch.
+func ActivatePengu() error {
+	coreDll := filepath.Join(PENGU_DIR, "core.dll")
+	if _, err := os.Stat(coreDll); os.IsNotExist(err) {
+		return fmt.Errorf("core.dll not found at %s", coreDll)
 	}
 
-	fmt.Println()
-	fmt.Println("  +-----------------------------------------+")
-	fmt.Println("  |  Click 'Activate' in Pengu Loader       |")
-	fmt.Println("  |  then close the window to continue      |")
-	fmt.Println("  +-----------------------------------------+")
-	fmt.Println()
+	value := fmt.Sprintf(`rundll32 "%s", #6000`, coreDll)
 
-	cmd := exec.Command(penguExe)
+	cmd := exec.Command("reg", "add", ifeoKey, "/v", "Debugger", "/t", "REG_SZ", "/d", value, "/f")
 	cmd.SysProcAttr = getSysProcAttr()
-	err := cmd.Run()
-	return err
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("reg add failed: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// DeactivatePengu removes the IFEO Debugger registry value.
+func DeactivatePengu() {
+	cmd := exec.Command("reg", "delete", ifeoKey, "/v", "Debugger", "/f")
+	cmd.SysProcAttr = getSysProcAttr()
+	cmd.Run() // ignore errors — value may already be absent
 }
 
 // createDirectories creates base directories (not Pengu-related, those are created after detection)
@@ -337,20 +344,19 @@ func SetupPlugin(pluginZipURL string) bool {
 	return true
 }
 
-// checkPenguActivation checks and prompts for Pengu activation
+// checkPenguActivation activates Pengu via registry.
+// Returns true if activation succeeded or was already active.
 func checkPenguActivation() bool {
-	if isPenguActivated() {
+	if IsPenguActivated() {
 		return true
 	}
 
-	launchPenguForActivation()
-
-	if isPenguActivated() {
-		return true
+	if err := ActivatePengu(); err != nil {
+		statusFail("Pengu activation")
+		return false
 	}
 
-	statusFail("Pengu activation")
-	return false
+	return true
 }
 
 // RunSetup runs the full setup process (version can be passed for display)

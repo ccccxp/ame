@@ -280,6 +280,14 @@ func cleanup() {
 	display.Pause()
 	fmt.Println("\n  Shutting down...")
 	server.HandleCleanup()
+
+	if setup.IsPenguActivated() {
+		setup.DeactivatePengu()
+		if lcu.IsClientRunning() {
+			server.BroadcastRestartPrompt()
+		}
+	}
+
 	killPenguLoader()
 }
 
@@ -433,6 +441,9 @@ func main() {
 	// Check for updates (auto-applies when minimized or autoUpdate is on)
 	checkForUpdates()
 
+	// Track activation state before setup
+	wasActivated := setup.IsPenguActivated()
+
 	// Run setup (downloads dependencies if needed)
 	if !setup.RunSetup(setupConfig) {
 		fmt.Println()
@@ -442,6 +453,12 @@ func main() {
 			fmt.Scanln()
 		}
 		os.Exit(1)
+	}
+
+	// If Pengu was freshly activated and client is running, restart it
+	if !wasActivated && setup.IsPenguActivated() && lcu.IsClientRunning() {
+		fmt.Println("  Restarting League Client...")
+		lcu.RestartClient()
 	}
 
 	// Save current version after successful setup
@@ -457,6 +474,11 @@ func main() {
 			fmt.Println()
 			game.PromptGameDir()
 		}
+	}
+
+	// Wire up uninstall callback to trigger graceful exit
+	server.OnUninstall = func() {
+		quitTray()
 	}
 
 	// Start WebSocket server in background
