@@ -462,9 +462,6 @@ func HandleCleanup() {
 	modtools.KillModTools()
 	os.RemoveAll(config.OverlayDir)
 
-	// Leave room party
-	roomState.Leave()
-
 	overlayBuildMu.Lock()
 	prebuiltModKey = ""
 	overlayBuildMu.Unlock()
