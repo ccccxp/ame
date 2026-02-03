@@ -1,4 +1,3 @@
-- Fixed room party teammate skins not included in overlay
-- Fixed skin not rebuilding when teammates arrive after apply
-- Fixed overlay not updating when teammate skins change during loading
-- Room party now stays active until the game ends for more reliable skin sharing
+- Fixed teammate skin being removed when room party polling temporarily loses a teammate
+- Reduced unnecessary overlay rebuilds when teammates browse skins during champion select
+- Teammate skin changes are now debounced and applied once at the end of champion select

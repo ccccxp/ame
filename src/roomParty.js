@@ -4,11 +4,14 @@ import { el } from './dom';
 import { ROOM_PARTY_INDICATOR_CLASS } from './constants';
 import { retriggerPrefetch } from './autoApply';
 
+const RETRIGGER_DEBOUNCE_MS = 5000;
+
 let enabled = false;
 let joined = false;
 let joining = false;
 let currentTeammates = [];
 let unsubUpdate = null;
+let retriggerDebounceTimer = null;
 
 function teammateSkinKey(teammates) {
   return teammates.map(t => t.skinInfo?.skinId || '').sort().join(',');
@@ -64,8 +67,21 @@ export async function joinRoom(existingSession) {
       currentTeammates = teammates;
       renderTeammateIndicators();
       if (newKey !== oldKey) {
-        console.log(`[ame] roomPartyUpdate: teammate skins changed, retriggering prefetch`);
-        retriggerPrefetch();
+        // Only retrigger if there are new or changed skins — not when teammates
+        // disappear (transient polling gaps should not remove already-applied skins).
+        const oldIds = new Set(oldKey.split(',').filter(Boolean));
+        const hasNewSkins = newKey.split(',').filter(Boolean).some(id => !oldIds.has(id));
+        if (hasNewSkins) {
+          if (retriggerDebounceTimer) clearTimeout(retriggerDebounceTimer);
+          console.log(`[ame] roomPartyUpdate: new teammate skins detected, debouncing retrigger`);
+          retriggerDebounceTimer = setTimeout(() => {
+            retriggerDebounceTimer = null;
+            console.log(`[ame] roomPartyUpdate: debounce fired, retriggering prefetch`);
+            retriggerPrefetch();
+          }, RETRIGGER_DEBOUNCE_MS);
+        } else {
+          console.log(`[ame] roomPartyUpdate: teammate skins removed, skipping retrigger`);
+        }
       }
     });
   } finally {
@@ -87,8 +103,18 @@ export function notifySkinChange(championId, skinId, baseSkinId, championName, s
   });
 }
 
+export function flushPendingRetrigger() {
+  if (retriggerDebounceTimer) {
+    clearTimeout(retriggerDebounceTimer);
+    retriggerDebounceTimer = null;
+    console.log(`[ame] flushPendingRetrigger: flushing debounced retrigger`);
+    retriggerPrefetch();
+  }
+}
+
 export function leaveRoom() {
   if (!joined) return;
+  if (retriggerDebounceTimer) { clearTimeout(retriggerDebounceTimer); retriggerDebounceTimer = null; }
   console.log('[ame] leaveRoom: leaving room party');
   wsSend({ type: 'roomPartyLeave' });
   joined = false;

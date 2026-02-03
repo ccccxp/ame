@@ -13,7 +13,7 @@ import { ensureBenchSwap, cleanupBenchSwap, loadBenchSwapSetting } from './bench
 import { loadAutoSelectSetting, handleChampSelectSession, resetAutoSelect } from './autoSelect';
 import { setLastChampionId, setAppliedSkinName, setOwnedSkinIds, resetOwnedSkins, getOwnedSkinChampionId, isOwnedSkin, getPendingForceDefault, setPendingForceDefault } from './state';
 import { readCurrentSkin, findSkinByName } from './skin';
-import { joinRoom, leaveRoom, loadRoomPartySetting } from './roomParty';
+import { joinRoom, leaveRoom, loadRoomPartySetting, flushPendingRetrigger } from './roomParty';
 import { initChatStatus } from './chatStatus';
 
 
@@ -216,9 +216,10 @@ export function init(context) {
       fetchAndLogTimer();
       joinRoom();
     } else if (!inChampSelect && wasInChampSelect) {
-      console.log('[ame] Champ select ended, running forceApplyIfNeeded');
+      console.log('[ame] Champ select ended, flushing retrigger + forceApply');
       setChampSelectActive(false);
       stopObserving();
+      flushPendingRetrigger();
       forceApplyIfNeeded().finally(() => {
         console.log('[ame] forceApplyIfNeeded settled');
         resetAutoApply(true);
