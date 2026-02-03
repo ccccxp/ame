@@ -2,12 +2,17 @@ import { wsSend, onRoomPartyUpdate, onSetting } from './websocket';
 import { fetchJson } from './api';
 import { el } from './dom';
 import { ROOM_PARTY_INDICATOR_CLASS } from './constants';
+import { retriggerPrefetch } from './autoApply';
 
 let enabled = false;
 let joined = false;
 let joining = false;
 let currentTeammates = [];
 let unsubUpdate = null;
+
+function teammateSkinKey(teammates) {
+  return teammates.map(t => t.skinInfo?.skinId || '').sort().join(',');
+}
 
 export function loadRoomPartySetting() {
   onSetting('roomParty', (v) => {
@@ -53,8 +58,15 @@ export async function joinRoom(existingSession) {
     joined = true;
 
     unsubUpdate = onRoomPartyUpdate((teammates) => {
+      const oldKey = teammateSkinKey(currentTeammates);
+      const newKey = teammateSkinKey(teammates);
+      console.log(`[ame] roomPartyUpdate: ${teammates.length} teammates, skinKey: "${oldKey}" -> "${newKey}"`);
       currentTeammates = teammates;
       renderTeammateIndicators();
+      if (newKey !== oldKey) {
+        console.log(`[ame] roomPartyUpdate: teammate skins changed, retriggering prefetch`);
+        retriggerPrefetch();
+      }
     });
   } finally {
     joining = false;
@@ -77,6 +89,7 @@ export function notifySkinChange(championId, skinId, baseSkinId, championName, s
 
 export function leaveRoom() {
   if (!joined) return;
+  console.log('[ame] leaveRoom: leaving room party');
   wsSend({ type: 'roomPartyLeave' });
   joined = false;
   currentTeammates = [];

@@ -5,7 +5,7 @@ import { injectStyles, unlockSkinCarousel } from './styles';
 import { wsConnect, wsSend, isOverlayActive } from './websocket';
 import { ensureApplyButton, removeApplyButton, updateButtonState } from './ui';
 import { ensureChromaButton, closeChromaPanel } from './chroma';
-import { resetAutoApply, forceApplyIfNeeded, fetchAndLogGameflow, fetchAndLogTimer, checkAutoApply } from './autoApply';
+import { resetAutoApply, forceApplyIfNeeded, fetchAndLogGameflow, fetchAndLogTimer, checkAutoApply, lockRetrigger, setChampSelectActive } from './autoApply';
 import { ensureInGameUI, removeInGameUI, updateInGameStatus } from './inGame';
 import { initSettings } from './settings';
 import { handleReadyCheck, cancelPendingAccept, loadAutoAcceptSetting } from './autoAcceptMatch';
@@ -209,6 +209,7 @@ export function init(context) {
       setAppliedSkinName(null);
       resetAutoApply();
       resetAutoSelect();
+      setChampSelectActive(true);
       stopSwiftplayObserving();
       startObserving();
       fetchAndLogGameflow();
@@ -216,11 +217,11 @@ export function init(context) {
       joinRoom();
     } else if (!inChampSelect && wasInChampSelect) {
       console.log('[ame] Champ select ended, running forceApplyIfNeeded');
+      setChampSelectActive(false);
       stopObserving();
       forceApplyIfNeeded().finally(() => {
-        console.log('[ame] forceApplyIfNeeded settled, cleaning up room party');
-        resetAutoApply();
-        leaveRoom();
+        console.log('[ame] forceApplyIfNeeded settled');
+        resetAutoApply(true);
       });
       resetAutoSelect();
       injectionTriggered = true;
@@ -235,6 +236,7 @@ export function init(context) {
     }
 
     if (inGame && !wasInGame) {
+      lockRetrigger();
       injectStyles();
       inGamePollTimer = setInterval(() => {
         ensureInGameUI();
@@ -246,6 +248,7 @@ export function init(context) {
     }
 
     if (injectionTriggered && POST_GAME_PHASES.includes(phase)) {
+      leaveRoom();
       if (isOverlayActive()) {
         wsSend({ type: 'cleanup' });
       }

@@ -146,6 +146,7 @@ var lastBaseSkinID string
 var lastChampionName string
 var lastSkinName string
 var lastChromaName string
+var lastModKey string
 var stateMu sync.Mutex
 
 // Prebuild state — tracks overlay pre-built during champion select
@@ -176,9 +177,16 @@ func sendStatus(conn *websocket.Conn, status, message string) {
 
 // handleApply handles skin apply request
 func handleApply(conn *websocket.Conn, championID, skinID, baseSkinID, championName, skinName, chromaName string) {
-	// If runoverlay is already running for this exact skin, skip — nothing to do
+	// Compute mod key early: includes own skin + teammate skins if room party is active
+	currentModKey := skinID
+	if roomState.IsActive() {
+		currentModKey = roomState.ComputeModKey(skinID)
+	}
+
+	// If runoverlay is already running for this exact mod set, skip — nothing to do
 	stateMu.Lock()
-	alreadyActive := modtools.IsRunning() && lastSkinID == skinID
+	alreadyActive := modtools.IsRunning() && lastModKey == currentModKey
+	display.Log(fmt.Sprintf("Apply: modKey=%s lastModKey=%s running=%v alreadyActive=%v", currentModKey, lastModKey, modtools.IsRunning(), alreadyActive))
 	stateMu.Unlock()
 	if alreadyActive {
 		sendStatus(conn, "ready", "Skin applied!")
@@ -271,11 +279,8 @@ func handleApply(conn *websocket.Conn, championID, skinID, baseSkinID, championN
 	// Build overlay (or reuse pre-built one from prefetch).
 	overlayBuildMu.Lock()
 
-	// Compute mod key: includes own skin + teammate skins if room party is active
-	currentModKey := skinID
 	teammateSkinCount := 0
 	if roomState.IsActive() {
-		currentModKey = roomState.ComputeModKey(skinID)
 		display.Log(fmt.Sprintf("Apply: room party active, mod key: %s", currentModKey))
 	} else {
 		display.Log("Apply: room party inactive, own skin only")
@@ -340,7 +345,12 @@ func handleApply(conn *websocket.Conn, championID, skinID, baseSkinID, championN
 		return
 	}
 
-	// Track last applied state
+	// Track last applied state — use the actual built key, not the theoretical one,
+	// so that a later apply with new teammates isn't short-circuited.
+	actualModKey := skinID
+	if roomState.IsActive() {
+		actualModKey = roomState.ComputeBuiltModKey(skinID)
+	}
 	stateMu.Lock()
 	lastChampionID = championID
 	lastSkinID = skinID
@@ -348,7 +358,9 @@ func handleApply(conn *websocket.Conn, championID, skinID, baseSkinID, championN
 	lastChampionName = championName
 	lastSkinName = skinName
 	lastChromaName = chromaName
+	lastModKey = actualModKey
 	stateMu.Unlock()
+	display.Log(fmt.Sprintf("Apply: stored lastModKey=%s (wanted=%s)", actualModKey, currentModKey))
 
 	display.SetSkin(skinName, chromaName)
 	display.SetOverlay("Active")
@@ -399,8 +411,10 @@ func handlePrefetch(conn *websocket.Conn, championID, skinID, baseSkinID, champi
 
 	// Skip if already pre-built for this exact set of skins
 	if prebuiltModKey == currentModKey {
+		display.Log(fmt.Sprintf("Prefetch: skipped (already built), modKey=%s", currentModKey))
 		return
 	}
+	display.Log(fmt.Sprintf("Prefetch: modKey=%s (was %s), roomActive=%v", currentModKey, prebuiltModKey, roomState.IsActive()))
 
 	os.RemoveAll(config.ModsDir)
 	modSubDir := filepath.Join(config.ModsDir, fmt.Sprintf("skin_%s", skinID))
@@ -462,6 +476,7 @@ func HandleCleanup() {
 	lastChampionName = ""
 	lastSkinName = ""
 	lastChromaName = ""
+	lastModKey = ""
 	stateMu.Unlock()
 
 	display.SetSkin("", "")
@@ -719,10 +734,11 @@ func handleConnection(conn *websocket.Conn) {
 				continue
 			}
 			if !config.RoomParty() {
+				display.Log("Room Party: join ignored (setting disabled)")
 				continue
 			}
 			roomState.Join(msg.RoomKey, msg.Puuid, msg.TeamPuuids)
-			display.Log("Room Party: joined room")
+			display.Log(fmt.Sprintf("Room Party: joined room %s with %d teammates", msg.RoomKey, len(msg.TeamPuuids)))
 
 		case "roomPartySkin":
 			var msg RoomPartySkinMessage
@@ -732,6 +748,7 @@ func handleConnection(conn *websocket.Conn) {
 			if !config.RoomParty() {
 				continue
 			}
+			display.Log(fmt.Sprintf("Room Party: own skin updated to %s (%s)", msg.SkinName, toString(msg.SkinID)))
 			roomState.UpdateSkin(roomparty.SkinInfo{
 				ChampionID:   toString(msg.ChampionID),
 				SkinID:       toString(msg.SkinID),

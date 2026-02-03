@@ -1,1 +1,4 @@
-- Added fallback suspend methods for better compatibility
+- Fixed room party teammate skins not included in overlay
+- Fixed skin not rebuilding when teammates arrive after apply
+- Fixed overlay not updating when teammate skins change during loading
+- Room party now stays active until the game ends for more reliable skin sharing
