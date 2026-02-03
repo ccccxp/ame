@@ -3,7 +3,7 @@ import { getMyChampionId, loadChampionSkins, getChampionName, forceDefaultSkin }
 import { readCurrentSkin, findSkinByName, isDefaultSkin } from './skin';
 import { wsSend, wsSendApply, isOverlayActive } from './websocket';
 import { toastError } from './toast';
-import { getAppliedSkinName, setAppliedSkinName, getSelectedChroma } from './state';
+import { getAppliedSkinName, setAppliedSkinName, getSelectedChroma, getSkinForced, setSkinForced } from './state';
 import { ensureElement, removeElement } from './dom';
 import { createButton } from './components';
 import { notifySkinChange } from './roomParty';
@@ -62,11 +62,15 @@ async function onApplyClick() {
 
   if (isDefaultSkin(skin)) return;
 
+  console.log(`[ame:ui] forceDefaultSkin(${championId}) calling...`);
   const forced = await forceDefaultSkin(championId);
+  console.log(`[ame:ui] forceDefaultSkin result: ${forced}`);
   if (!forced) {
     toastError('Could not set default skin — try again');
     return;
   }
+  setSkinForced(true);
+  console.log('[ame:ui] skinForced set to true');
 
   const champName = await getChampionName(championId);
   const chroma = getSelectedChroma();
@@ -94,7 +98,12 @@ export function updateButtonState(ownership) {
   }
 
   if (ownership) {
-    if (isOverlayActive()) {
+    const forced = getSkinForced();
+    const overlay = isOverlayActive();
+    console.log(`[ame:ui] updateButtonState: owned=true skin="${current}" skinForced=${forced} overlayActive=${overlay}`);
+    if (forced) return;
+    if (overlay) {
+      console.log('[ame:ui] updateButtonState: sending cleanup (owned + overlay active)');
       wsSend({ type: 'cleanup' });
     }
     if (getAppliedSkinName()) {

@@ -5,7 +5,7 @@ import { injectStyles, unlockSkinCarousel } from './styles';
 import { wsConnect, wsSend, isOverlayActive } from './websocket';
 import { ensureApplyButton, removeApplyButton, updateButtonState } from './ui';
 import { ensureChromaButton, closeChromaPanel } from './chroma';
-import { resetAutoApply, forceApplyIfNeeded, fetchAndLogGameflow, fetchAndLogTimer, checkAutoApply, lockRetrigger, setChampSelectActive } from './autoApply';
+import { resetAutoApply, forceApplyIfNeeded, fetchAndLogGameflow, fetchAndLogTimer, checkAutoApply, lockRetrigger, setChampSelectActive, processClickBack } from './autoApply';
 import { ensureInGameUI, removeInGameUI, updateInGameStatus } from './inGame';
 import { initSettings } from './settings';
 import { handleReadyCheck, cancelPendingAccept, loadAutoAcceptSetting } from './autoAcceptMatch';
@@ -57,7 +57,9 @@ function resolveOwnership(champId) {
   if (getOwnedSkinChampionId() !== champId) return null;
   const skin = findSkinByName(skins, skinName);
   if (!skin) return null;
-  return isOwnedSkin(skin.id);
+  const owned = isOwnedSkin(skin.id);
+  console.log(`[ame:own] resolveOwnership: skin="${skinName}" id=${skin.id} owned=${owned}`);
+  return owned;
 }
 
 function stopObserving() {
@@ -95,6 +97,7 @@ async function pollUI() {
 
     updateButtonState(ownership);
     checkAutoApply(champId, ownership);
+    processClickBack();
   } finally {
     pollRunning = false;
   }

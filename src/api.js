@@ -92,10 +92,15 @@ export async function fetchOwnedSkins(summonerId, championId) {
   const data = await fetchJson(
     `/lol-champions/v1/inventories/${summonerId}/champions/${championId}/skins`
   );
-  if (!data || !Array.isArray(data)) return null;
-  return data
+  if (!data || !Array.isArray(data)) {
+    console.log(`[ame:api] fetchOwnedSkins: no data for summoner=${summonerId} champ=${championId}`);
+    return null;
+  }
+  const owned = data
     .filter(s => s.ownership && (s.ownership.owned || s.ownership.rental?.rented))
     .map(s => s.id);
+  console.log(`[ame:api] fetchOwnedSkins: champ=${championId} total=${data.length} owned=[${owned.join(', ')}]`);
+  return owned;
 }
 
 export async function forceDefaultSkin(championId) {
@@ -106,8 +111,10 @@ export async function forceDefaultSkin(championId) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ selectedSkinId: defaultSkinId }),
     });
+    console.log(`[ame:api] forceDefaultSkin: PATCH selectedSkinId=${defaultSkinId} status=${res.status}`);
     return res.ok;
-  } catch {
+  } catch (err) {
+    console.log(`[ame:api] forceDefaultSkin: error`, err);
     return false;
   }
 }

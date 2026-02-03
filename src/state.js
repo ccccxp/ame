@@ -89,6 +89,18 @@ export function resetOwnedSkins() {
   ownedSkinChampionId = null;
 }
 
+// --- Skin forced flag (set after forceDefaultSkin during apply, prevents cleanup race) ---
+
+let skinForced = false;
+
+export function getSkinForced() {
+  return skinForced;
+}
+
+export function setSkinForced(v) {
+  skinForced = v;
+}
+
 // --- Pending force-default flag (for swiftplay -> champ select transition) ---
 
 let pendingForceDefault = false;
