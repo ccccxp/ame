@@ -1,10 +1,10 @@
-import { BUTTON_ID } from './constants';
+import { BUTTON_ID, CONNECTION_BANNER_ID } from './constants';
 import { getMyChampionId, loadChampionSkins, getChampionName, forceDefaultSkin } from './api';
 import { readCurrentSkin, findSkinByName, isDefaultSkin } from './skin';
-import { wsSend, wsSendApply, isOverlayActive } from './websocket';
+import { wsSend, wsSendApply, isOverlayActive, isConnected, onConnection } from './websocket';
 import { toastError } from './toast';
 import { getAppliedSkinName, setAppliedSkinName, getSelectedChroma, getSkinForced, setSkinForced } from './state';
-import { ensureElement, removeElement } from './dom';
+import { ensureElement, removeElement, el } from './dom';
 import { createButton } from './components';
 import { notifySkinChange } from './roomParty';
 
@@ -25,6 +25,51 @@ export function ensureApplyButton() {
 
 export function removeApplyButton() {
   removeElement(BUTTON_ID);
+}
+
+let connectionHooked = false;
+
+export function ensureConnectionBanner() {
+  const existing = document.getElementById(CONNECTION_BANNER_ID);
+  if (existing) return existing;
+
+  const banner = el('div', { class: 'ame-connection-banner' },
+    el('span', { class: 'ame-connection-dot' }),
+    el('span', { class: 'ame-connection-text' }, 'Ame is not running. Open ame.exe to enable apply.')
+  );
+  banner.id = CONNECTION_BANNER_ID;
+
+  const teamBoost = document.querySelector('.team-boost');
+  if (teamBoost && teamBoost.parentElement) {
+    teamBoost.parentElement.insertBefore(banner, teamBoost);
+  } else {
+    const container = document.querySelector('.skin-selection-carousel-container');
+    if (!container) return null;
+    container.prepend(banner);
+  }
+
+  return banner;
+}
+
+function setConnectionBanner(connected) {
+  const banner = ensureConnectionBanner();
+  if (!banner) return;
+  banner.style.display = connected ? 'none' : 'flex';
+}
+
+export function updateConnectionBanner() {
+  setConnectionBanner(isConnected());
+}
+
+export function initConnectionStatus() {
+  if (connectionHooked) return;
+  connectionHooked = true;
+  onConnection((connected) => {
+    setConnectionBanner(connected);
+    if (!connected) {
+      setButtonState('Open ame.exe', true);
+    }
+  });
 }
 
 export function setButtonState(text, disabled) {
@@ -89,6 +134,11 @@ async function onApplyClick() {
 }
 
 export function updateButtonState(ownership) {
+  if (!isConnected()) {
+    setButtonState('Open ame.exe', true);
+    return;
+  }
+
   const current = readCurrentSkin();
   if (!current) return;
 

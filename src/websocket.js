@@ -32,6 +32,16 @@ const chatStatusListeners = [];
 // Room party: teammate update listeners
 const roomPartyListeners = [];
 
+// Connection state listeners
+let wsConnected = false;
+const connectionListeners = [];
+
+function setConnected(v) {
+  if (wsConnected === v) return;
+  wsConnected = v;
+  connectionListeners.forEach(cb => cb(wsConnected));
+}
+
 /**
  * Register a listener for a boolean setting.
  * Fires immediately with cached value (if available) and on every update.
@@ -132,6 +142,7 @@ export function wsConnect() {
     ws = new WebSocket(WS_URL);
     ws.onopen = () => {
       console.log('[ame] WebSocket connected');
+      setConnected(true);
       wsReconnectDelay = WS_RECONNECT_BASE_MS;
       // Hydrate all state from server on connect/reconnect
       ws.send(JSON.stringify({ type: 'query' }));
@@ -195,9 +206,13 @@ export function wsConnect() {
         console.log('[ame] onmessage error:', err);
       }
     };
-    ws.onclose = () => wsScheduleReconnect();
+    ws.onclose = () => {
+      setConnected(false);
+      wsScheduleReconnect();
+    };
     ws.onerror = () => {};
   } catch {
+    setConnected(false);
     wsScheduleReconnect();
   }
 }
@@ -216,6 +231,15 @@ export function isApplyInFlight() { return !!applyResolve; }
 export function isOverlayActive() { return overlayActive; }
 export function setOverlayActive(v) { overlayActive = v; }
 export function onGamePath(cb) { gamePathCallback = cb; }
+export function isConnected() { return wsConnected; }
+export function onConnection(cb) {
+  connectionListeners.push(cb);
+  cb(wsConnected);
+  return () => {
+    const idx = connectionListeners.indexOf(cb);
+    if (idx !== -1) connectionListeners.splice(idx, 1);
+  };
+}
 
 export function wsSend(obj) {
   if (ws && ws.readyState === WebSocket.OPEN) {

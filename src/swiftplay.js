@@ -1,13 +1,14 @@
-import { SWIFTPLAY_BUTTON_ID } from './constants';
+import { SWIFTPLAY_BUTTON_ID, CONNECTION_BANNER_ID } from './constants';
 import { getChampionIdFromLobbyDOM, loadChampionSkins, getChampionName } from './api';
 import { readCurrentSkin, findSkinByName, isDefaultSkin } from './skin';
-import { wsSend, wsSendApply, isOverlayActive } from './websocket';
+import { wsSend, wsSendApply, isOverlayActive, isConnected } from './websocket';
 import { toastError } from './toast';
 import { getAppliedSkinName, setAppliedSkinName, getSelectedChroma } from './state';
-import { ensureElement, removeElement } from './dom';
+import { ensureElement, removeElement, el } from './dom';
 import { createButton } from './components';
 
 const CONTAINER_SELECTOR = '.quick-play-skin-select-component .top-part';
+const SWIFTPLAY_BANNER_ID = `${CONNECTION_BANNER_ID}-swiftplay`;
 
 export function ensureSwiftplayButton() {
   ensureElement(SWIFTPLAY_BUTTON_ID, CONTAINER_SELECTOR, (container) => {
@@ -26,6 +27,27 @@ export function removeSwiftplayButton() {
   removeElement(SWIFTPLAY_BUTTON_ID);
 }
 
+export function ensureSwiftplayConnectionBanner() {
+  const container = document.querySelector(CONTAINER_SELECTOR);
+  if (!container) return null;
+  const existing = document.getElementById(SWIFTPLAY_BANNER_ID);
+  if (existing) return existing;
+
+  const banner = el('div', { class: 'ame-connection-banner' },
+    el('span', { class: 'ame-connection-dot' }),
+    el('span', { class: 'ame-connection-text' }, 'Ame is not running. Open ame.exe to enable apply.')
+  );
+  banner.id = SWIFTPLAY_BANNER_ID;
+  container.prepend(banner);
+  return banner;
+}
+
+export function updateSwiftplayConnectionBanner() {
+  const banner = ensureSwiftplayConnectionBanner();
+  if (!banner) return;
+  banner.style.display = isConnected() ? 'none' : 'flex';
+}
+
 function setButtonState(text, disabled) {
   const btn = document.getElementById(SWIFTPLAY_BUTTON_ID);
   if (!btn) return;
@@ -38,6 +60,11 @@ function setButtonState(text, disabled) {
 }
 
 export function updateSwiftplayButtonState(ownership) {
+  if (!isConnected()) {
+    setButtonState('Open ame.exe', true);
+    return;
+  }
+
   const current = readCurrentSkin();
   if (!current) return;
 

@@ -43,6 +43,31 @@ export function injectStyles() {
       cursor: default !important;
       filter: grayscale(0.5) !important;
     }
+    .ame-connection-banner {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 6px 0 8px;
+      padding: 6px 10px;
+      border-radius: 4px;
+      background: rgba(30, 24, 16, 0.6);
+      border: 1px solid rgba(200, 170, 110, 0.35);
+      font-family: var(--font-body);
+      font-size: 12px;
+      color: #f0e6d2;
+      letter-spacing: 0.01em;
+    }
+    .ame-connection-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #c89b3c;
+      box-shadow: 0 0 4px rgba(200, 155, 60, 0.6);
+      flex-shrink: 0;
+    }
+    .ame-connection-text {
+      line-height: 1.2;
+    }
     .toggle-ability-previews-button-container {
       justify-content: center !important;
       align-items: center !important;

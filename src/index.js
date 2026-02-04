@@ -1,9 +1,9 @@
 import { CHAMP_SELECT_PHASES, POST_GAME_PHASES, IN_GAME_PHASES, IN_GAME_POLL_MS, POLL_INTERVAL_MS, CHROMA_BTN_CLASS } from './constants';
-import { ensureSwiftplayButton, removeSwiftplayButton, updateSwiftplayButtonState, unlockSwiftplayCarousel, isSwiftplaySkinPanelOpen } from './swiftplay';
+import { ensureSwiftplayButton, removeSwiftplayButton, updateSwiftplayButtonState, unlockSwiftplayCarousel, isSwiftplaySkinPanelOpen, ensureSwiftplayConnectionBanner, updateSwiftplayConnectionBanner } from './swiftplay';
 import { getMyChampionId, getChampionSkins, loadChampionSkins, resetSkinsCache, fetchJson, fetchSummonerId, fetchOwnedSkins, forceDefaultSkin, getChampionIdFromLobbyDOM } from './api';
 import { injectStyles, unlockSkinCarousel } from './styles';
 import { wsConnect, wsSend, isOverlayActive } from './websocket';
-import { ensureApplyButton, removeApplyButton, updateButtonState } from './ui';
+import { ensureApplyButton, removeApplyButton, updateButtonState, ensureConnectionBanner, updateConnectionBanner, initConnectionStatus } from './ui';
 import { ensureChromaButton, closeChromaPanel } from './chroma';
 import { resetAutoApply, forceApplyIfNeeded, fetchAndLogGameflow, fetchAndLogTimer, checkAutoApply, lockRetrigger, setChampSelectActive, processClickBack } from './autoApply';
 import { ensureInGameUI, removeInGameUI, updateInGameStatus } from './inGame';
@@ -77,6 +77,8 @@ async function pollUI() {
   pollRunning = true;
   try {
     ensureApplyButton();
+    ensureConnectionBanner();
+    updateConnectionBanner();
     ensureBenchSwap();
     unlockSkinCarousel();
 
@@ -130,6 +132,8 @@ async function pollSwiftplayUI() {
       removeSwiftplayButton();
       return;
     }
+    ensureSwiftplayConnectionBanner();
+    updateSwiftplayConnectionBanner();
     ensureSwiftplayButton();
     unlockSwiftplayCarousel();
 
@@ -162,6 +166,7 @@ function startSwiftplayObserving() {
 export function init(context) {
   injectStyles();
   wsConnect();
+  initConnectionStatus();
   initSettings();
   loadAutoAcceptSetting();
   loadBenchSwapSetting();
