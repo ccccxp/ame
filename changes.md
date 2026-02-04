@@ -1,1 +1,4 @@
-- Fixed room party disconnecting when starting a new match
+- Added a disconnected banner and disabled the apply button when not connected
+- Automatically activated features on install without asking to restart
+- Added automatic restart of the League client after plugin updates
+- Added new languages and improved console output
