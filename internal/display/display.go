@@ -15,7 +15,7 @@ import (
 	"github.com/hoangvu12/ame/internal/i18n"
 )
 
-const maxLogs = 50
+const maxLogs = 10
 const maxExportLogs = 1000
 
 type logEntry struct {
