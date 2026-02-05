@@ -8,6 +8,9 @@ import { ensureElement, removeElement, el } from './dom';
 import { createButton } from './components';
 import { notifySkinChange } from './roomParty';
 import { t } from './i18n';
+import { createLogger } from './logger';
+
+const logger = createLogger('ui');
 
 export function ensureApplyButton() {
   ensureElement(BUTTON_ID, '.toggle-ability-previews-button-container', (container) => {
@@ -108,15 +111,15 @@ async function onApplyClick() {
 
   if (isDefaultSkin(skin)) return;
 
-  console.log(`[ame:ui] forceDefaultSkin(${championId}) calling...`);
+  logger.log(` forceDefaultSkin(${championId}) calling...`);
   const forced = await forceDefaultSkin(championId);
-  console.log(`[ame:ui] forceDefaultSkin result: ${forced}`);
+  logger.log(` forceDefaultSkin result: ${forced}`);
   if (!forced) {
     toastError(t('errors.could_not_set_default'));
     return;
   }
   setSkinForced(true);
-  console.log('[ame:ui] skinForced set to true');
+  logger.log(' skinForced set to true');
 
   const champName = await getChampionName(championId);
   const chroma = getSelectedChroma();
@@ -151,10 +154,10 @@ export function updateButtonState(ownership) {
   if (ownership) {
     const forced = getSkinForced();
     const overlay = isOverlayActive();
-    console.log(`[ame:ui] updateButtonState: owned=true skin="${current}" skinForced=${forced} overlayActive=${overlay}`);
+    logger.log(` updateButtonState: owned=true skin="${current}" skinForced=${forced} overlayActive=${overlay}`);
     if (forced) return;
     if (overlay) {
-      console.log('[ame:ui] updateButtonState: sending cleanup (owned + overlay active)');
+      logger.log(' updateButtonState: sending cleanup (owned + overlay active)');
       wsSend({ type: 'cleanup' });
     }
     if (getAppliedSkinName()) {

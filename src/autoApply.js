@@ -12,9 +12,10 @@ import { setButtonState } from './ui';
 import { PREFETCH_DEBOUNCE_MS } from './constants';
 import { notifySkinChange } from './roomParty';
 import { t } from './i18n';
+import { createLogger } from './logger';
 
+const logger = createLogger('auto');
 const AUTO_APPLY_STABLE_MS = 10000;
-const LOG = '[ame:auto]';
 
 // Tracking state (local to this module — not shared)
 let lastTrackedSkin = null;
@@ -34,7 +35,7 @@ const MAX_RETRIGGER_RETRIES = 3;
  * Notify auto-apply that a chroma was selected — resets stability timer.
  */
 export function onChromaSelected(chromaId, baseSkinId, chromaName = null, baseSkinName = null) {
-  console.log(`${LOG} Chroma selected: ${chromaId} (base: ${baseSkinId})`);
+  logger.log(` Chroma selected: ${chromaId} (base: ${baseSkinId})`);
   setSelectedChroma(chromaId, baseSkinId, chromaName, baseSkinName);
   stableSince = Date.now();
   autoApplyTriggered = false;
@@ -60,7 +61,7 @@ export function processClickBack() {
   for (const item of items) {
     const key = getSkinKeyFromItem(item);
     if (key === skinNum) {
-      console.log(`${LOG} clickBack: found skinNum=${skinNum}, dispatching events`);
+      logger.log(` clickBack: found skinNum=${skinNum}, dispatching events`);
       const thumb = item.querySelector('.skin-selection-thumbnail') || item;
       thumb.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
       thumb.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true }));
@@ -98,23 +99,23 @@ function debouncePrefetch(championId, skinName) {
       const champName = await getChampionName(championId);
       const payload = { type: 'prefetch', championId, skinId: skin.id, championName: champName, skinName: skin.name };
       lastPrefetchPayload = payload;
-      console.log(`${LOG} prefetch: sending for ${skin.name} (${skin.id})`);
+      logger.log(` prefetch: sending for ${skin.name} (${skin.id})`);
       wsSend(payload);
       notifySkinChange(championId, skin.id, '', champName, skin.name, '');
 
       // Force base skin now so the session is on base before champ select ends.
       // skinForced prevents the poll from cleaning up the overlay.
-      console.log(`${LOG} prefetch: skinForced=${getSkinForced()}, will force=${!getSkinForced()}`);
+      logger.log(` prefetch: skinForced=${getSkinForced()}, will force=${!getSkinForced()}`);
       if (!getSkinForced()) {
         const skinNum = skin.id % 1000;
         const forced = await forceDefaultSkin(championId);
-        console.log(`${LOG} prefetch: forceDefaultSkin result: ${forced}`);
+        logger.log(` prefetch: forceDefaultSkin result: ${forced}`);
         if (forced) {
           setSkinForced(true);
           // Click the unowned skin's carousel item to scroll back,
           // so the UI doesn't jump to the base skin confusingly.
           pendingClickBack = skinNum;
-          console.log(`${LOG} prefetch: set pendingClickBack=${skinNum}`);
+          logger.log(` prefetch: set pendingClickBack=${skinNum}`);
         }
       }
     }
@@ -124,9 +125,9 @@ function debouncePrefetch(championId, skinName) {
 // --- Force apply (last resort before game starts) ---
 
 export async function forceApplyIfNeeded() {
-  if (getAppliedSkinName()) { console.log(`${LOG} forceApply: skipped (already applied: ${getAppliedSkinName()})`); return; }
-  if (isApplyInFlight()) { console.log(`${LOG} forceApply: skipped (apply in-flight)`); return; }
-  if (isOverlayActive()) { console.log(`${LOG} forceApply: skipped (overlay active)`); return; }
+  if (getAppliedSkinName()) { logger.log(` forceApply: skipped (already applied: ${getAppliedSkinName()})`); return; }
+  if (isApplyInFlight()) { logger.log(` forceApply: skipped (apply in-flight)`); return; }
+  if (isOverlayActive()) { logger.log(` forceApply: skipped (overlay active)`); return; }
 
   // Use saved prefetch payload — after forceDefaultSkin the DOM shows the base
   // skin so lastTrackedSkin / readCurrentSkin() would resolve to default.
@@ -137,10 +138,10 @@ export async function forceApplyIfNeeded() {
     const championId = savedPayload.championId || lastTrackedChampion;
     if (championId) {
       const forced = await forceDefaultSkin(championId);
-      console.log(`${LOG} forceApply: forceDefaultSkin result: ${forced}`);
+      logger.log(` forceApply: forceDefaultSkin result: ${forced}`);
     }
     const chroma = getSelectedChroma();
-    console.log(`${LOG} forceApply: applying from payload ${savedPayload.skinName} (${savedPayload.skinId}${chroma ? ', chroma: ' + chroma.id : ''})`);
+    logger.log(` forceApply: applying from payload ${savedPayload.skinName} (${savedPayload.skinId}${chroma ? ', chroma: ' + chroma.id : ''})`);
     if (chroma) {
       wsSendApply({
         type: 'apply', championId: savedPayload.championId,
@@ -170,11 +171,11 @@ export async function forceApplyIfNeeded() {
   if (!skin || isDefaultSkin(skin)) return;
 
   const forced = await forceDefaultSkin(championId);
-  console.log(`${LOG} forceApply: forceDefaultSkin (fallback) result: ${forced}`);
+  logger.log(` forceApply: forceDefaultSkin (fallback) result: ${forced}`);
 
   const champName = await getChampionName(championId);
   const chroma = getSelectedChroma();
-  console.log(`${LOG} forceApply: applying ${skinName} (champ: ${champName}, skin: ${skin.id}${chroma ? ', chroma: ' + chroma.id : ''})`);
+  logger.log(` forceApply: applying ${skinName} (champ: ${champName}, skin: ${skin.id}${chroma ? ', chroma: ' + chroma.id : ''})`);
   if (chroma) {
     const payload = {
       type: 'apply', championId, skinId: chroma.id, baseSkinId: chroma.baseSkinId,
@@ -203,7 +204,7 @@ export function resetAutoApply(keepPayload = false) {
   epoch++;
   clearSelectedChroma();
   setAppliedChromaId(null);
-  console.log(`${LOG} resetAutoApply: clearing skinForced`);
+  logger.log(` resetAutoApply: clearing skinForced`);
   setSkinForced(false);
   pendingClickBack = null;
   cancelPrefetch();
@@ -234,7 +235,7 @@ export function retriggerPrefetch() {
   if (retriggerTimer) { clearTimeout(retriggerTimer); retriggerTimer = null; }
 
   if (!lastPrefetchPayload) {
-    console.log(`${LOG} retriggerPrefetch: no saved payload, skipping`);
+    logger.log(` retriggerPrefetch: no saved payload, skipping`);
     return;
   }
 
@@ -242,20 +243,20 @@ export function retriggerPrefetch() {
   if (champSelectActive) {
     const currentSkin = readCurrentSkin();
     if (currentSkin && lastPrefetchPayload.skinName !== currentSkin) {
-      console.log(`${LOG} retriggerPrefetch: stale payload (${lastPrefetchPayload.skinName} != ${currentSkin}), skipping`);
+      logger.log(` retriggerPrefetch: stale payload (${lastPrefetchPayload.skinName} != ${currentSkin}), skipping`);
       return;
     }
   }
 
   if (isApplyInFlight()) {
     if (retriggerRetries >= MAX_RETRIGGER_RETRIES) {
-      console.log(`${LOG} retriggerPrefetch: max retries, scheduling final deferred retry`);
+      logger.log(` retriggerPrefetch: max retries, scheduling final deferred retry`);
       retriggerRetries = 0;
       retriggerTimer = setTimeout(() => { retriggerTimer = null; retriggerPrefetch(); }, 10000);
       return;
     }
     retriggerRetries++;
-    console.log(`${LOG} retriggerPrefetch: apply in-flight, scheduling retry ${retriggerRetries}/${MAX_RETRIGGER_RETRIES}`);
+    logger.log(` retriggerPrefetch: apply in-flight, scheduling retry ${retriggerRetries}/${MAX_RETRIGGER_RETRIES}`);
     retriggerTimer = setTimeout(() => { retriggerTimer = null; retriggerPrefetch(); }, 2000);
     return;
   }
@@ -264,10 +265,10 @@ export function retriggerPrefetch() {
   // During champ select: send prefetch (just build, don't start overlay).
   // After champ select: send apply (rebuild + restart overlay).
   if (champSelectActive && !isOverlayActive()) {
-    console.log(`${LOG} retriggerPrefetch: re-sending prefetch for ${lastPrefetchPayload.skinId} (${lastPrefetchPayload.skinName})`);
+    logger.log(` retriggerPrefetch: re-sending prefetch for ${lastPrefetchPayload.skinId} (${lastPrefetchPayload.skinName})`);
     wsSend(lastPrefetchPayload);
   } else {
-    console.log(`${LOG} retriggerPrefetch: sending as apply for ${lastPrefetchPayload.skinId} (${lastPrefetchPayload.skinName})`);
+    logger.log(` retriggerPrefetch: sending as apply for ${lastPrefetchPayload.skinId} (${lastPrefetchPayload.skinName})`);
     wsSendApply({ ...lastPrefetchPayload, type: 'apply' });
   }
 }
@@ -389,16 +390,16 @@ async function triggerAutoApply() {
     return;
   }
 
-  console.log(`${LOG} forceDefaultSkin(${championId}) calling...`);
+  logger.log(` forceDefaultSkin(${championId}) calling...`);
   const forced = await forceDefaultSkin(championId);
-  console.log(`${LOG} forceDefaultSkin result: ${forced}`);
+  logger.log(` forceDefaultSkin result: ${forced}`);
   if (!forced) {
     autoApplyTriggered = false;
     stableSince = Date.now();
     return;
   }
   setSkinForced(true);
-  console.log(`${LOG} skinForced set to true`);
+  logger.log(` skinForced set to true`);
 
   const champName = await getChampionName(championId);
   if (startChroma) {

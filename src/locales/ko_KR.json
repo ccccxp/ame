@@ -48,6 +48,9 @@
     "chat_status": {
       "title": "상태"
     },
+    "download_logs": {
+      "button": "로그 다운로드"
+    },
     "uninstall": {
       "button": "Ame 제거",
       "title": "AME 제거",

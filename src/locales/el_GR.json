@@ -48,6 +48,9 @@
     "chat_status": {
       "title": "Availability"
     },
+    "download_logs": {
+      "button": "Λήψη αρχείων καταγραφής"
+    },
     "uninstall": {
       "button": "Uninstall Ame",
       "title": "UNINSTALL AME",

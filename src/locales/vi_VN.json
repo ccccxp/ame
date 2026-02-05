@@ -48,6 +48,9 @@
     "chat_status": {
       "title": "Trạng thái"
     },
+    "download_logs": {
+      "button": "Tải nhật ký"
+    },
     "uninstall": {
       "button": "Gỡ cài đặt Ame",
       "title": "GỠ CÀI ĐẶT AME",

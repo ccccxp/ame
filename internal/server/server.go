@@ -850,6 +850,17 @@ func handleConnection(conn *websocket.Conn) {
 			stateMu.Unlock()
 			data, _ := json.Marshal(state)
 			conn.WriteMessage(websocket.TextMessage, data)
+
+		case "getLogs":
+			logs := display.GetLogsJSON()
+			version := display.GetVersion()
+			resp := map[string]interface{}{
+				"type":    "logs",
+				"version": version,
+				"entries": logs,
+			}
+			data, _ := json.Marshal(resp)
+			conn.WriteMessage(websocket.TextMessage, data)
 		}
 	}
 }

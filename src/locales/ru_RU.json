@@ -48,6 +48,9 @@
     "chat_status": {
       "title": "Availability"
     },
+    "download_logs": {
+      "button": "Скачать логи"
+    },
     "uninstall": {
       "button": "Uninstall Ame",
       "title": "UNINSTALL AME",

@@ -16,6 +16,9 @@ import { readCurrentSkin, findSkinByName } from './skin';
 import { joinRoom, leaveRoom, loadRoomPartySetting, flushPendingRetrigger } from './roomParty';
 import { initChatStatus } from './chatStatus';
 import { initI18n } from './i18n';
+import { createLogger } from './logger';
+
+const logger = createLogger('core');
 
 
 let pollTimer = null;
@@ -59,7 +62,7 @@ function resolveOwnership(champId) {
   const skin = findSkinByName(skins, skinName);
   if (!skin) return null;
   const owned = isOwnedSkin(skin.id);
-  console.log(`[ame:own] resolveOwnership: skin="${skinName}" id=${skin.id} owned=${owned}`);
+  logger.log(`resolveOwnership: skin="${skinName}" id=${skin.id} owned=${owned}`);
   return owned;
 }
 
@@ -227,12 +230,12 @@ export async function init(context) {
       leaveRoom();
       joinRoom();
     } else if (!inChampSelect && wasInChampSelect) {
-      console.log('[ame] Champ select ended, flushing retrigger + forceApply');
+      logger.log('Champ select ended, flushing retrigger + forceApply');
       setChampSelectActive(false);
       stopObserving();
       flushPendingRetrigger();
       forceApplyIfNeeded().finally(() => {
-        console.log('[ame] forceApplyIfNeeded settled');
+        logger.log('forceApplyIfNeeded settled');
         resetAutoApply(true);
       });
       resetAutoSelect();

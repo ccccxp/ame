@@ -4,6 +4,9 @@ import { el } from './dom';
 import { ROOM_PARTY_INDICATOR_CLASS } from './constants';
 import { retriggerPrefetch } from './autoApply';
 import { t } from './i18n';
+import { createLogger } from './logger';
+
+const logger = createLogger('room');
 
 const RETRIGGER_DEBOUNCE_MS = 5000;
 
@@ -31,26 +34,26 @@ export function loadRoomPartySetting() {
 
 export async function joinRoom(existingSession) {
   if (!enabled || joined || joining) {
-    console.log('[ame] joinRoom skipped:', !enabled ? 'not enabled' : joined ? 'already joined' : 'join in progress');
+    logger.log(' joinRoom skipped:', !enabled ? 'not enabled' : joined ? 'already joined' : 'join in progress');
     return;
   }
   joining = true;
 
   try {
     const summoner = await fetchJson('/lol-summoner/v1/current-summoner');
-    if (!summoner?.puuid) { console.log('[ame] joinRoom: no puuid'); return; }
+    if (!summoner?.puuid) { logger.log(' joinRoom: no puuid'); return; }
 
     const session = existingSession || await fetchJson('/lol-champ-select/v1/session');
-    if (!session?.myTeam) { console.log('[ame] joinRoom: no myTeam'); return; }
+    if (!session?.myTeam) { logger.log(' joinRoom: no myTeam'); return; }
 
     const roomKey = session.chatDetails?.multiUserChatId;
-    if (!roomKey) { console.log('[ame] joinRoom: no multiUserChatId'); return; }
+    if (!roomKey) { logger.log(' joinRoom: no multiUserChatId'); return; }
 
     const teamPuuids = session.myTeam
       .map(p => p.puuid)
       .filter(p => p && p !== '' && p !== summoner.puuid);
 
-    console.log('[ame] joinRoom: joining room', roomKey, 'with', teamPuuids.length, 'teammates');
+    logger.log(' joinRoom: joining room', roomKey, 'with', teamPuuids.length, 'teammates');
 
     wsSend({
       type: 'roomPartyJoin',
@@ -64,7 +67,7 @@ export async function joinRoom(existingSession) {
     unsubUpdate = onRoomPartyUpdate((teammates) => {
       const oldKey = teammateSkinKey(currentTeammates);
       const newKey = teammateSkinKey(teammates);
-      console.log(`[ame] roomPartyUpdate: ${teammates.length} teammates, skinKey: "${oldKey}" -> "${newKey}"`);
+      logger.log(` roomPartyUpdate: ${teammates.length} teammates, skinKey: "${oldKey}" -> "${newKey}"`);
       currentTeammates = teammates;
       renderTeammateIndicators();
       if (newKey !== oldKey) {
@@ -74,14 +77,14 @@ export async function joinRoom(existingSession) {
         const hasNewSkins = newKey.split(',').filter(Boolean).some(id => !oldIds.has(id));
         if (hasNewSkins) {
           if (retriggerDebounceTimer) clearTimeout(retriggerDebounceTimer);
-          console.log(`[ame] roomPartyUpdate: new teammate skins detected, debouncing retrigger`);
+          logger.log(` roomPartyUpdate: new teammate skins detected, debouncing retrigger`);
           retriggerDebounceTimer = setTimeout(() => {
             retriggerDebounceTimer = null;
-            console.log(`[ame] roomPartyUpdate: debounce fired, retriggering prefetch`);
+            logger.log(` roomPartyUpdate: debounce fired, retriggering prefetch`);
             retriggerPrefetch();
           }, RETRIGGER_DEBOUNCE_MS);
         } else {
-          console.log(`[ame] roomPartyUpdate: teammate skins removed, skipping retrigger`);
+          logger.log(` roomPartyUpdate: teammate skins removed, skipping retrigger`);
         }
       }
     });
@@ -92,7 +95,7 @@ export async function joinRoom(existingSession) {
 
 export function notifySkinChange(championId, skinId, baseSkinId, championName, skinName, chromaName) {
   if (!enabled || !joined) return;
-  console.log(`[ame] Room party: notifying skin change: ${skinName} (${skinId})`);
+  logger.log(` Room party: notifying skin change: ${skinName} (${skinId})`);
   wsSend({
     type: 'roomPartySkin',
     championId,
@@ -108,7 +111,7 @@ export function flushPendingRetrigger() {
   if (retriggerDebounceTimer) {
     clearTimeout(retriggerDebounceTimer);
     retriggerDebounceTimer = null;
-    console.log(`[ame] flushPendingRetrigger: flushing debounced retrigger`);
+    logger.log(` flushPendingRetrigger: flushing debounced retrigger`);
     retriggerPrefetch();
   }
 }
@@ -116,7 +119,7 @@ export function flushPendingRetrigger() {
 export function leaveRoom() {
   if (!joined) return;
   if (retriggerDebounceTimer) { clearTimeout(retriggerDebounceTimer); retriggerDebounceTimer = null; }
-  console.log('[ame] leaveRoom: leaving room party');
+  logger.log(' leaveRoom: leaving room party');
   wsSend({ type: 'roomPartyLeave' });
   joined = false;
   currentTeammates = [];

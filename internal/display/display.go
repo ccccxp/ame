@@ -9,13 +9,14 @@ import (
 	"sync"
 	"syscall"
 	"time"
-	"unsafe"
 	"unicode/utf8"
+	"unsafe"
 
 	"github.com/hoangvu12/ame/internal/i18n"
 )
 
-const maxLogs = 8
+const maxLogs = 50
+const maxExportLogs = 1000
 
 type logEntry struct {
 	Time    time.Time
@@ -23,15 +24,16 @@ type logEntry struct {
 }
 
 var (
-	mu      sync.Mutex
-	version string
-	status  string
-	skin    string
-	overlay string
-	party   string
-	logs    []logEntry
-	paused  bool
-	started bool
+	mu         sync.Mutex
+	version    string
+	status     string
+	skin       string
+	overlay    string
+	party      string
+	logs       []logEntry
+	exportLogs []logEntry // Larger buffer for export
+	paused     bool
+	started    bool
 )
 
 // enableVT enables Virtual Terminal Processing on the Windows console,
@@ -62,6 +64,7 @@ func Init(ver string) {
 	overlay = i18n.T("display.value.overlay_inactive", nil)
 	party = i18n.T("display.value.party_off", nil)
 	logs = nil
+	exportLogs = nil
 	started = true
 	paused = false
 
@@ -143,10 +146,20 @@ func Log(msg string) {
 	mu.Lock()
 	defer mu.Unlock()
 
-	logs = append(logs, logEntry{Time: time.Now(), Message: msg})
+	entry := logEntry{Time: time.Now(), Message: msg}
+
+	// Add to display buffer (shown in console)
+	logs = append(logs, entry)
 	if len(logs) > maxLogs {
 		logs = logs[len(logs)-maxLogs:]
 	}
+
+	// Add to export buffer (for download)
+	exportLogs = append(exportLogs, entry)
+	if len(exportLogs) > maxExportLogs {
+		exportLogs = exportLogs[len(exportLogs)-maxExportLogs:]
+	}
+
 	render()
 }
 
@@ -214,4 +227,34 @@ func render() {
 	}
 
 	os.Stdout.WriteString(b.String())
+}
+
+// LogExportEntry represents a single log entry for JSON export
+type LogExportEntry struct {
+	Timestamp int64  `json:"timestamp"`
+	Source    string `json:"source"`
+	Message   string `json:"message"`
+}
+
+// GetLogsJSON returns all logs as a JSON-serializable slice for merging with plugin logs.
+func GetLogsJSON() []LogExportEntry {
+	mu.Lock()
+	defer mu.Unlock()
+
+	result := make([]LogExportEntry, len(exportLogs))
+	for i, entry := range exportLogs {
+		result[i] = LogExportEntry{
+			Timestamp: entry.Time.UnixMilli(),
+			Source:    "server",
+			Message:   entry.Message,
+		}
+	}
+	return result
+}
+
+// GetVersion returns the current version string
+func GetVersion() string {
+	mu.Lock()
+	defer mu.Unlock()
+	return version
 }

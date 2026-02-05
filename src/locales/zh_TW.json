@@ -48,6 +48,9 @@
     "chat_status": {
       "title": "狀態"
     },
+    "download_logs": {
+      "button": "下載日誌"
+    },
     "uninstall": {
       "button": "解除安裝 Ame",
       "title": "解除安裝 AME",

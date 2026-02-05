@@ -48,6 +48,9 @@
     "chat_status": {
       "title": "ステータス"
     },
+    "download_logs": {
+      "button": "ログをダウンロード"
+    },
     "uninstall": {
       "button": "Ame をアンインストール",
       "title": "AME をアンインストール",

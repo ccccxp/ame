@@ -2,6 +2,9 @@ import { WS_URL, WS_RECONNECT_BASE_MS, WS_RECONNECT_MAX_MS } from './constants';
 import { toastError, toastPromise } from './toast';
 import { el } from './dom';
 import { t } from './i18n';
+import { createLogger } from './logger';
+
+const logger = createLogger('ws');
 
 let ws = null;
 let wsReconnectDelay = WS_RECONNECT_BASE_MS;
@@ -17,6 +20,9 @@ let overlayActive = false;
 
 // One-shot callback for gamePath response
 let gamePathCallback = null;
+
+// One-shot callback for logs response
+let logsCallback = null;
 
 // Settings: local cache + pub/sub listeners keyed by setting name
 const settingsCache = {};
@@ -142,7 +148,7 @@ export function wsConnect() {
   try {
     ws = new WebSocket(WS_URL);
     ws.onopen = () => {
-      console.log('[ame] WebSocket connected');
+      logger.log('WebSocket connected');
       setConnected(true);
       wsReconnectDelay = WS_RECONNECT_BASE_MS;
       // Hydrate all state from server on connect/reconnect
@@ -164,13 +170,21 @@ export function wsConnect() {
             };
           }
           overlayActive = !!msg.overlayActive;
-          console.log('[ame] State from server:', overlayActive ? 'active' : 'inactive', lastApplyPayload);
+          logger.log('State from server:', overlayActive ? 'active' : 'inactive', lastApplyPayload);
         } else if (msg.type === 'roomPartyUpdate') {
           roomPartyListeners.forEach(cb => cb(msg.teammates || []));
         } else if (msg.type === 'gamePath') {
           if (gamePathCallback) {
             gamePathCallback(msg.path || '');
             gamePathCallback = null;
+          }
+        } else if (msg.type === 'logs') {
+          if (logsCallback) {
+            logsCallback({
+              version: msg.version || 'unknown',
+              entries: msg.entries || [],
+            });
+            logsCallback = null;
           }
         } else if (msg.type === 'settings') {
           // Batch settings snapshot — update all registered keys
@@ -204,7 +218,7 @@ export function wsConnect() {
           }
         }
       } catch (err) {
-        console.log('[ame] onmessage error:', err);
+        logger.error('onmessage error:', err);
       }
     };
     ws.onclose = () => {
@@ -233,6 +247,10 @@ export function isOverlayActive() { return overlayActive; }
 export function setOverlayActive(v) { overlayActive = v; }
 export function onGamePath(cb) { gamePathCallback = cb; }
 export function isConnected() { return wsConnected; }
+export function requestLogs(cb) {
+  logsCallback = cb;
+  wsSend({ type: 'getLogs' });
+}
 export function onConnection(cb) {
   connectionListeners.push(cb);
   cb(wsConnected);
