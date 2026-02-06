@@ -1,1 +1,2 @@
-- Added "I'm stuck" button to release frozen game on reconnect screen
+- Fixed game freezing when suspending during loading
+- Migrated room party to WebSocket for faster updates
