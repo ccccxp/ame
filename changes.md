@@ -1,2 +1,2 @@
-- Fixed game freezing when suspending during loading
-- Migrated room party to WebSocket for faster updates
+- Added random skin selection (all skins or top 3 ranked skins)
+- Fixed overlay not being reused correctly
