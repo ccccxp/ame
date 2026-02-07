@@ -80,6 +80,12 @@
     "mobile": "移动端",
     "offline": "离线"
   },
+  "random_skin": {
+    "title": "随机皮肤",
+    "off": "关闭",
+    "all": "所有皮肤",
+    "top3": "前3皮肤"
+  },
   "room_party": {
     "tooltip": "Ame：{label}"
   }

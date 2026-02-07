@@ -80,6 +80,12 @@
     "mobile": "Di động",
     "offline": "Ngoại tuyến"
   },
+  "random_skin": {
+    "title": "Trang phục ngẫu nhiên",
+    "off": "Tắt",
+    "all": "Tất cả trang phục",
+    "top3": "Top 3 trang phục"
+  },
   "room_party": {
     "tooltip": "Ame: {label}"
   }

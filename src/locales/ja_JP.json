@@ -80,6 +80,12 @@
     "mobile": "モバイル",
     "offline": "オフライン"
   },
+  "random_skin": {
+    "title": "ランダムスキン",
+    "off": "オフ",
+    "all": "すべてのスキン",
+    "top3": "トップ3スキン"
+  },
   "room_party": {
     "tooltip": "Ame：{label}"
   }

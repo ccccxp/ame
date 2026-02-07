@@ -80,6 +80,12 @@
     "mobile": "모바일",
     "offline": "오프라인"
   },
+  "random_skin": {
+    "title": "랜덤 스킨",
+    "off": "끄기",
+    "all": "모든 스킨",
+    "top3": "상위 3 스킨"
+  },
   "room_party": {
     "tooltip": "Ame: {label}"
   }

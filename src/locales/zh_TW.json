@@ -80,6 +80,12 @@
     "mobile": "行動",
     "offline": "離線"
   },
+  "random_skin": {
+    "title": "隨機造型",
+    "off": "關閉",
+    "all": "所有造型",
+    "top3": "前3造型"
+  },
   "room_party": {
     "tooltip": "Ame：{label}"
   }
